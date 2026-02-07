@@ -50,6 +50,3 @@ prisma/*.db-journal
 # video factory output
 /public/jobs/*
 !/public/jobs/.gitkeep
-
-# style reference (user-provided)
-/assets/style-reference.*
