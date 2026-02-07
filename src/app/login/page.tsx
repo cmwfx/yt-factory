@@ -1,10 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -13,31 +11,24 @@ export default function LoginPage() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    // Check if any users exist (setup mode)
-    fetch('/api/auth/register', { method: 'HEAD' }).catch(() => {});
-    // Simple check: try to see if we get redirected or 403
+    // Check if already authenticated
     fetch('/api/auth/me')
       .then(res => {
         if (res.ok) {
-          router.push('/');
+          window.location.href = '/';
           return;
         }
-        // Check if setup mode (no users)
-        return fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: '', password: '' }),
-        });
+        // Check if setup mode (no users exist)
+        return fetch('/api/auth/register').then(res => res?.json());
       })
-      .then(res => {
-        // If we get 400 (missing fields) instead of 403 (needs admin), no users exist
-        if (res && res.status === 400) {
+      .then(data => {
+        if (data?.setup) {
           setIsSetup(true);
         }
       })
       .catch(() => {})
       .finally(() => setChecking(false));
-  }, [router]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +49,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push('/');
+      window.location.href = '/';
     } catch {
       setError('Network error');
     } finally {

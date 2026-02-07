@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createUser, getUserCount, getUserByUsername } from '@/lib/db';
 import { hashPassword, generateToken, getUserFromRequest, getAuthCookieOptions } from '@/lib/auth';
 
+export async function GET() {
+  const userCount = await getUserCount();
+  return NextResponse.json({ setup: userCount === 0 });
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { username, password } = await request.json();
