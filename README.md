@@ -1,427 +1,428 @@
-# AI YouTube Video Factory
+# YT Factory — VPS Deployment Guide
 
-A production-ready Next.js 14 application that fully automates AI-powered YouTube video creation. The system handles idea generation, script writing, scene planning, image generation, audio synthesis, transcription, and video rendering.
+Deploy YT Factory to your VPS at `167.86.90.225`, accessible via `https://25466.xyz`.
 
-## Table of Contents
-
-- [Features](#features)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Detailed Setup Guide](#detailed-setup-guide)
-  - [1. PostgreSQL Database Setup](#1-postgresql-database-setup)
-  - [2. FFmpeg Installation](#2-ffmpeg-installation)
-  - [3. API Keys](#3-api-keys)
-  - [4. Style Reference Image](#4-style-reference-image)
-  - [5. Environment Configuration](#5-environment-configuration)
-  - [6. Initialize Database](#6-initialize-database)
-- [Usage](#usage)
-- [Troubleshooting](#troubleshooting)
-
----
-
-## Features
-
-- **Idea Generation**: AI generates unique video topics based on channel theme
-- **Script Writing**: ~1600 word scripts with scene breaks using Gemini
-- **Scene Breakdown**: Converts script to structured visual scenes with image prompts
-- **Image Generation**: Creates consistent editorial-style illustrations using Gemini image generation
-- **Voice Synthesis**: Natural TTS narration using Gemini TTS
-- **Transcription**: Word-level timestamps via AssemblyAI
-- **Video Rendering**: FFmpeg-powered rendering with Ken Burns zoom effects and captions
-- **Retry & Resume**: Recover from any failed step without restarting
+Everything runs on a single VPS: the Next.js app, PostgreSQL, Nginx, and SSL.
 
 ---
 
 ## Prerequisites
 
-- Node.js 18+ ([Download](https://nodejs.org/))
-- PostgreSQL 14+ ([Download](https://www.postgresql.org/download/))
-- FFmpeg ([Download](https://ffmpeg.org/download.html))
-- Google AI (Gemini) API key
-- AssemblyAI API key
-- Style reference image (PNG/JPEG)
+- Ubuntu 22.04+ on VPS (167.86.90.225)
+- Domain `25466.xyz` A record pointing to `167.86.90.225` (already done)
+- Root or sudo SSH access
 
 ---
 
-## Quick Start
+## 1. SSH into the VPS
 
 ```bash
-# 1. Install dependencies
-npm install
-
-# 2. Copy environment template
-cp .env.example .env
-
-# 3. Edit .env with your settings (see detailed guide below)
-
-# 4. Initialize database
-npm run db:push
-
-# 5. Start development server
-npm run dev
-
-# 6. Open http://localhost:3000
+ssh root@167.86.90.225
 ```
 
 ---
 
-## Detailed Setup Guide
-
-### 1. PostgreSQL Database Setup
-
-#### Option A: Install PostgreSQL on Windows
-
-1. **Download PostgreSQL installer**
-   - Go to: https://www.postgresql.org/download/windows/
-   - Click "Download the installer"
-   - Choose the latest version (e.g., PostgreSQL 16)
-
-2. **Run the installer**
-   - Run the downloaded `.exe` file
-   - Click "Next" through the wizard
-   - **Installation Directory**: Keep default or choose your own
-   - **Select Components**: Keep all selected (PostgreSQL Server, pgAdmin 4, Stack Builder, Command Line Tools)
-   - **Data Directory**: Keep default
-   - **Password**: Set a password for the `postgres` superuser (REMEMBER THIS!)
-   - **Port**: Keep default `5432`
-   - **Locale**: Keep default
-   - Click "Next" and "Finish"
-
-3. **Create the database**
-
-   Open **pgAdmin 4** (installed with PostgreSQL) or use command line:
-
-   **Using pgAdmin 4:**
-   - Open pgAdmin 4 from Start Menu
-   - Enter your master password if prompted
-   - Expand "Servers" → Right-click "PostgreSQL 16" → "Connect"
-   - Enter the password you set during installation
-   - Right-click "Databases" → "Create" → "Database..."
-   - Database name: `youtube_factory`
-   - Click "Save"
-
-   **Using Command Line (PowerShell as Admin):**
-   ```powershell
-   # Open psql
-   & "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres
-
-   # Enter password when prompted, then run:
-   CREATE DATABASE youtube_factory;
-   \q
-   ```
-
-4. **Update your .env file**
-   ```env
-   DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5432/youtube_factory"
-   ```
-   Replace `YOUR_PASSWORD` with the password you set during installation.
-
-#### Option B: Use Docker (Alternative)
-
-If you have Docker installed:
+## 2. Install System Dependencies
 
 ```bash
-# Start PostgreSQL container
-docker run --name youtube-factory-db \
-  -e POSTGRES_PASSWORD=mysecretpassword \
-  -e POSTGRES_DB=youtube_factory \
-  -p 5432:5432 \
-  -d postgres:16
+# Update packages
+apt update && apt upgrade -y
 
-# Your DATABASE_URL will be:
-# DATABASE_URL="postgresql://postgres:mysecretpassword@localhost:5432/youtube_factory"
-```
+# Node.js 20 LTS
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs
 
-#### Option C: Use a Cloud Database
+# Verify Node
+node -v   # should show v20.x
+npm -v    # should show 10.x
 
-You can use a managed PostgreSQL service:
-- [Supabase](https://supabase.com/) (Free tier available)
-- [Neon](https://neon.tech/) (Free tier available)
-- [Railway](https://railway.app/)
-- [Render](https://render.com/)
+# FFmpeg (required for video rendering)
+apt install -y ffmpeg
 
-Copy the connection string they provide into your `.env` file.
+# Git
+apt install -y git
 
----
+# Nginx (reverse proxy)
+apt install -y nginx
 
-### 2. FFmpeg Installation
-
-FFmpeg is required for video rendering.
-
-#### Windows Installation
-
-**Option A: Using winget (Recommended)**
-```powershell
-winget install FFmpeg
-```
-
-**Option B: Using Chocolatey**
-```powershell
-choco install ffmpeg
-```
-
-**Option C: Manual Installation**
-1. Download from: https://www.gyan.dev/ffmpeg/builds/
-2. Download "ffmpeg-release-essentials.zip"
-3. Extract to `C:\ffmpeg`
-4. Add `C:\ffmpeg\bin` to your PATH:
-   - Search "Environment Variables" in Windows
-   - Click "Environment Variables..."
-   - Under "System variables", find "Path"
-   - Click "Edit" → "New"
-   - Add `C:\ffmpeg\bin`
-   - Click "OK" on all dialogs
-5. Restart your terminal
-
-**Verify installation:**
-```powershell
-ffmpeg -version
+# Certbot (SSL certificates via Let's Encrypt)
+apt install -y certbot python3-certbot-nginx
 ```
 
 ---
 
-### 3. API Keys
-
-#### Google AI (Gemini) API Key
-
-1. Go to: https://aistudio.google.com/app/apikey
-2. Click "Create API Key"
-3. Copy the key to your `.env` file:
-   ```env
-   GOOGLE_GENAI_API_KEY=your-api-key-here
-   ```
-
-#### AssemblyAI API Key
-
-1. Go to: https://www.assemblyai.com/
-2. Sign up for a free account
-3. Go to your dashboard
-4. Copy your API key to your `.env` file:
-   ```env
-   ASSEMBLYAI_API_KEY=your-assemblyai-key-here
-   ```
-
----
-
-### 4. Style Reference Image
-
-The style reference image ensures visual consistency across all generated scene images.
-
-1. **Create or find a reference image** that represents your desired visual style:
-   - Editorial minimalist illustration
-   - Textured paper background
-   - Thin black ink lines
-   - Muted, desaturated colors
-
-2. **Save the image** to the `assets` folder:
-   ```
-   yt-factory/assets/style-reference.png
-   ```
-   (or `.jpeg` - update the path in `.env` accordingly)
-
-3. **Update .env**:
-   ```env
-   STYLE_REFERENCE_PATH=./assets/style-reference.png
-   ```
-
----
-
-### 5. Environment Configuration
-
-Create your `.env` file from the template:
+## 3. Install & Configure PostgreSQL
 
 ```bash
-cp .env.example .env
+# Install PostgreSQL
+apt install -y postgresql postgresql-contrib
+
+# Start and enable on boot
+systemctl start postgresql
+systemctl enable postgresql
 ```
 
-Edit `.env` with all your settings:
+Create the database and user:
+
+```bash
+sudo -u postgres psql
+```
+
+Inside the PostgreSQL shell, run:
+
+```sql
+CREATE USER ytfactory WITH PASSWORD 'replace_with_a_strong_password';
+CREATE DATABASE youtube_factory OWNER ytfactory;
+GRANT ALL PRIVILEGES ON DATABASE youtube_factory TO ytfactory;
+\q
+```
+
+Remember the password — you'll need it for the `.env` file.
+
+---
+
+## 4. Clone the Repository
+
+```bash
+mkdir -p /var/www
+cd /var/www
+git clone https://github.com/cmwfx/yt-factory.git
+cd yt-factory
+```
+
+---
+
+## 5. Configure Environment Variables
+
+Generate a JWT secret first:
+
+```bash
+openssl rand -hex 32
+```
+
+Copy the output, then create the `.env` file:
+
+```bash
+nano /var/www/yt-factory/.env
+```
+
+Paste the following (replace all placeholder values):
 
 ```env
-# Database - Update with your PostgreSQL credentials
-DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5432/youtube_factory"
+# Database
+DATABASE_URL="postgresql://ytfactory:replace_with_a_strong_password@localhost:5432/youtube_factory"
 
-# Google AI - Your Gemini API key
-GOOGLE_GENAI_API_KEY=your-gemini-api-key
+# Google AI (Gemini API key)
+GOOGLE_GENAI_API_KEY=your_google_genai_api_key_here
 
-# AssemblyAI - Your AssemblyAI API key
-ASSEMBLYAI_API_KEY=your-assemblyai-key
+# AssemblyAI (for audio transcription)
+ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
 
-# Assets - Path to your style reference image
-STYLE_REFERENCE_PATH=./assets/style-reference.png
+# Assets
+STYLE_REFERENCE_PATH=./assets/style-reference.jpeg
 
 # Configuration
 GENERATE_IDEAS=0
-TEST_MODE=true
+TEST_MODE=false
 JOBS_OUTPUT_DIR=./public/jobs
+
+# Auth (paste the output from openssl rand -hex 32)
+JWT_SECRET=paste_your_generated_secret_here
+
+# Telegram Notifications (optional — remove if not using)
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_CHAT_ID=your_telegram_chat_id
+```
+
+Save and exit (`Ctrl+X`, then `Y`, then `Enter`).
+
+---
+
+## 6. Install Dependencies & Build
+
+```bash
+cd /var/www/yt-factory
+
+# Install all dependencies
+npm install
+
+# Push the database schema to PostgreSQL
+npx prisma db push
+
+# Generate Prisma client
+npx prisma generate
+
+# Build the Next.js production app
+npm run build
+```
+
+You should see all 28 routes compile successfully.
+
+If the build fails with a memory error, add swap space first:
+
+```bash
+fallocate -l 2G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+```
+
+Then re-run `npm run build`.
+
+---
+
+## 7. Create Jobs Output Directory
+
+```bash
+mkdir -p /var/www/yt-factory/public/jobs
 ```
 
 ---
 
-### 6. Initialize Database
+## 8. Set Up systemd Service
 
-After PostgreSQL is running and your `.env` is configured:
+This ensures the app starts on boot and auto-restarts if it crashes.
 
 ```bash
-# Push the Prisma schema to create tables
-npm run db:push
+nano /etc/systemd/system/yt-factory.service
 ```
 
-You should see:
-```
-Environment variables loaded from .env
-Prisma schema loaded from prisma\schema.prisma
-Datasource "db": PostgreSQL database "youtube_factory"
+Paste:
 
-Your database is now in sync with your Prisma schema.
+```ini
+[Unit]
+Description=YT Factory
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/yt-factory
+ExecStart=/usr/bin/node /var/www/yt-factory/node_modules/.bin/next start --port 3000
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+EnvironmentFile=/var/www/yt-factory/.env
+
+# High file descriptor limit for concurrent jobs
+LimitNOFILE=65535
+
+# Give renders time to finish before force-killing
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target
 ```
 
-**Optional: View your database**
+Enable and start:
+
 ```bash
-npm run db:studio
+systemctl daemon-reload
+systemctl enable yt-factory
+systemctl start yt-factory
 ```
-This opens Prisma Studio at http://localhost:5555 where you can browse your data.
+
+Verify it's running:
+
+```bash
+systemctl status yt-factory
+```
+
+You should see `active (running)`. Test locally on the VPS:
+
+```bash
+curl http://localhost:3000
+```
 
 ---
 
-## Usage
-
-### Web Interface
-
-1. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-2. Open http://localhost:3000
-
-3. Click "Check Health" to verify all systems are working:
-   - **Database**: Should show "ok"
-   - **FFmpeg**: Should show "ok"
-
-4. To generate a video:
-   - Check "Generate new ideas first" (if you have no ideas yet)
-   - Check "Test mode" for a quick 3-scene test
-   - Click "Start Job"
-
-### CLI Commands
+## 9. Configure Nginx Reverse Proxy
 
 ```bash
-# Run with existing idea
-npm run job
-
-# Generate ideas first, then run
-npm run job:ideas
-
-# Test mode (3 scenes only - faster)
-npm run job:test
-
-# Retry a failed job from a specific step
-npx tsx scripts/runJob.ts --retry VIDEO_ID --from images
+nano /etc/nginx/sites-available/yt-factory
 ```
 
-### API Endpoints
+Paste:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/health` | GET | System health check |
-| `/api/jobs/start` | POST | Start a new video job |
-| `/api/jobs/retry` | POST | Retry a failed job |
-| `/api/ideas/generate` | POST | Generate new video ideas |
-| `/api/ideas/generate` | GET | List all ideas |
+```nginx
+server {
+    listen 80;
+    server_name 25466.xyz;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+
+        # Required for SSE (live progress updates)
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Disable buffering for SSE streams
+        proxy_buffering off;
+        proxy_cache off;
+
+        # Long timeouts for SSE connections and video renders
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+
+    # Allow uploads up to 50MB
+    client_max_body_size 50M;
+}
+```
+
+Enable the site:
+
+```bash
+# Symlink to sites-enabled
+ln -s /etc/nginx/sites-available/yt-factory /etc/nginx/sites-enabled/
+
+# Remove the default site
+rm -f /etc/nginx/sites-enabled/default
+
+# Test config for syntax errors
+nginx -t
+
+# Reload Nginx
+systemctl reload nginx
+```
+
+At this point `http://25466.xyz` should load the app (without SSL).
+
+---
+
+## 10. Enable SSL with Let's Encrypt
+
+```bash
+certbot --nginx -d 25466.xyz
+```
+
+When prompted:
+1. Enter your email address
+2. Agree to terms of service
+3. Choose **redirect HTTP to HTTPS** (option 2)
+
+Certbot will automatically update the Nginx config with SSL certificates.
+
+Verify auto-renewal works:
+
+```bash
+certbot renew --dry-run
+```
+
+Now open **https://25466.xyz** — you should see the login page.
+
+---
+
+## 11. First Login
+
+1. Go to `https://25466.xyz`
+2. You'll see the **"Create Admin Account"** screen (since no users exist yet)
+3. Pick a username and password — this creates your admin account
+4. You'll be redirected to the dashboard
+
+---
+
+## 12. Firewall (Optional but Recommended)
+
+```bash
+ufw allow 22/tcp     # SSH
+ufw allow 80/tcp     # HTTP (redirects to HTTPS)
+ufw allow 443/tcp    # HTTPS
+ufw enable
+```
+
+Do NOT open port 3000 — Nginx handles all external traffic.
+
+---
+
+## Common Operations
+
+### View live app logs
+
+```bash
+journalctl -u yt-factory -f
+```
+
+### Restart the app
+
+```bash
+systemctl restart yt-factory
+```
+
+### Pull updates and redeploy
+
+```bash
+cd /var/www/yt-factory
+git pull origin master
+npm install
+npx prisma db push
+npm run build
+systemctl restart yt-factory
+```
+
+### Run a video job manually
+
+```bash
+cd /var/www/yt-factory
+npx tsx scripts/runJob.ts                   # Normal run
+npx tsx scripts/runJob.ts --test            # Test mode
+npx tsx scripts/runJob.ts --generate-ideas  # Generate ideas first
+```
+
+### Browse the database with Prisma Studio
+
+```bash
+cd /var/www/yt-factory
+npx prisma studio
+```
+
+This opens on port 5555. To access it from your local machine, use an SSH tunnel:
+
+```bash
+# Run this on your LOCAL machine
+ssh -L 5555:localhost:5555 root@167.86.90.225
+```
+
+Then open `http://localhost:5555` in your browser.
+
+### Check PostgreSQL directly
+
+```bash
+sudo -u postgres psql -d youtube_factory
+```
+
+```sql
+SELECT id, title, status, "createdAt" FROM "Video" ORDER BY "createdAt" DESC LIMIT 10;
+```
+
+### View Nginx logs
+
+```bash
+# Access logs
+tail -f /var/log/nginx/access.log
+
+# Error logs
+tail -f /var/log/nginx/error.log
+```
 
 ---
 
 ## Troubleshooting
 
-### Database Connection Error (503)
-
-**Symptoms:** Health check shows database error, 503 status
-
-**Solutions:**
-1. Make sure PostgreSQL is running:
-   - Windows: Check "Services" app for "postgresql-x64-16"
-   - Or run: `pg_isready -h localhost -p 5432`
-
-2. Verify your DATABASE_URL in `.env`:
-   ```env
-   DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5432/youtube_factory"
-   ```
-
-3. Make sure the database exists:
-   ```bash
-   npm run db:push
-   ```
-
-4. Test the connection:
-   ```bash
-   npx prisma db pull
-   ```
-
-### FFmpeg Not Found
-
-**Symptoms:** Health check shows FFmpeg "missing"
-
-**Solutions:**
-1. Verify FFmpeg is installed:
-   ```bash
-   ffmpeg -version
-   ```
-
-2. If not found, install it (see [FFmpeg Installation](#2-ffmpeg-installation))
-
-3. Restart your terminal after adding to PATH
-
-### API Key Errors
-
-**Symptoms:** Jobs fail at script/image/audio generation
-
-**Solutions:**
-1. Verify your API keys are correct in `.env`
-2. Check you have API access/credits:
-   - Gemini: https://aistudio.google.com/
-   - AssemblyAI: https://www.assemblyai.com/app
-
-### Style Reference Not Found
-
-**Symptoms:** Image generation fails
-
-**Solutions:**
-1. Make sure the image exists at the path in `STYLE_REFERENCE_PATH`
-2. Use an absolute path if relative path doesn't work:
-   ```env
-   STYLE_REFERENCE_PATH=C:/Users/william/Desktop/Projects/YT automation/yt-factory/assets/style-reference.png
-   ```
-
----
-
-## Pipeline Steps
-
-1. **Ideas** (optional): Generate 10 unique video topics
-2. **Pick Idea**: Select oldest unused idea
-3. **Scripting**: Generate ~1600 word script with [SCENE_BREAK] markers
-4. **Scenes**: Convert script to structured scene array with image prompts
-5. **Images**: Generate images for each scene (1920x1080, 16:9)
-6. **Audio**: Generate TTS narration (24kHz WAV)
-7. **Transcribe**: Get word-level timestamps
-8. **Align**: Match scene timings to transcript (1-6s per scene)
-9. **Render**: FFmpeg compositing with zoom effects and burned-in captions
-
----
-
-## Output
-
-Each job creates a directory at `public/jobs/{videoId}/` containing:
-
-- `script.txt` - Full narration script
-- `scene_meta.json` - Scene breakdown
-- `scene_XXX.png` - Scene images
-- `audio.wav` - TTS narration
-- `captions.json` - Word timestamps
-- `scene_meta_aligned.json` - Aligned scenes with timings
-- `final.mp4` - Rendered video
-
----
-
-## License
-
-MIT
+| Problem | Solution |
+|---------|----------|
+| **502 Bad Gateway** | App crashed or isn't running. Run `systemctl status yt-factory` and check logs with `journalctl -u yt-factory -f` |
+| **Build fails (out of memory)** | Add swap space (see Step 6) |
+| **FFmpeg not found** | `apt install -y ffmpeg` |
+| **Database connection refused** | Check PostgreSQL: `systemctl status postgresql`. Verify `DATABASE_URL` in `.env` matches your credentials |
+| **SSL certificate expired** | `certbot renew` |
+| **SSE/live progress not updating** | Ensure `proxy_buffering off;` is in your Nginx config and reload: `systemctl reload nginx` |
+| **Permission denied on /public/jobs** | `chown -R root:root /var/www/yt-factory/public/jobs` |
+| **Login page won't load** | Check the app is running and JWT_SECRET is set in `.env` |
+| **Telegram notifications not sending** | Verify `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`. These are optional — remove them if not using Telegram |
