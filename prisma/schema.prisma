@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Idea {
+  id          String   @id @default(uuid())
+  title       String   @unique
+  description String
+  used        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  videos      Video[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  isAdmin      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
+
+model Video {
+  id              String      @id @default(uuid())
+  ideaId          String?
+  idea            Idea?       @relation(fields: [ideaId], references: [id])
+  title           String
+  status          VideoStatus @default(queued)
+  script          String?     @db.Text
+  clickbaitTitles String[]    @default([])
+  seoDescription  String?     @db.Text
+  seoKeywords     String[]    @default([])
+  thumbnailPrompts String[]   @default([])
+  costCents       Int?        // Total estimated cost in cents
+  costBreakdown   Json?       // { geminiText, geminiTTS, geminiImage, assemblyAI }
+  reviewData      Json?       // Stores { adjustments, regeneratedImages, averageConfidence }
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  assets          Asset[]
+  steps           Step[]
+  batchJobs       BatchJob[]
+}
+
+model BatchJob {
+  id            String   @id @default(uuid())
+  videoId       String
+  video         Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  phase         Int      // 1 or 2
+  batchName     String   // Gemini batch job name
+  status        String   @default("pending") // pending, running, succeeded, failed, cancelled
+  sceneIndices  Json     // Array of scene indices in this batch
+  resultFile    String?  // Gemini result file name
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Schedule {
+  id              String   @id @default(uuid())
+  intervalHours   Int
+  enabled         Boolean  @default(true)
+  generateIdeas   Boolean  @default(true)
+  enableReview    Boolean  @default(false)
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model RenderLock {
+  id        String   @id @default("singleton")
+  videoId   String?
+  lockedAt  DateTime?
+}
+
+enum VideoStatus {
+  queued
+  scripting
+  scenes
+  images
+  images_batch1
+  images_batch2
+  audio
+  align
+  review
+  render
+  render_queued
+  done
+  failed
+}
+
+model Asset {
+  id        String    @id @default(uuid())
+  videoId   String
+  video     Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  type      AssetType
+  filename  String
+  path      String
+  metadata  Json?
+  createdAt DateTime  @default(now())
+}
+
+enum AssetType {
+  script
+  image
+  audio
+  captions
+  video
+}
+
+model Step {
+  id         String     @id @default(uuid())
+  videoId    String
+  video      Video      @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  step       StepName
+  status     StepStatus @default(pending)
+  error      String?    @db.Text
+  startedAt  DateTime?
+  finishedAt DateTime?
+}
+
+enum StepName {
+  ideas
+  pick_idea
+  scripting
+  scenes
+  images
+  images_batch1
+  images_batch2
+  audio
+  transcribe
+  align
+  review
+  render
+}
+
+enum StepStatus {
+  pending
+  running
+  success
+  failed
+}
