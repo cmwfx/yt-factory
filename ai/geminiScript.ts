@@ -8,34 +8,51 @@ import type { IdeaInput, ScriptResult, ToneAngleBrief, ScriptSection, ScriptSect
 
 const genAI = new GoogleGenerativeAI(env.GOOGLE_GENAI_API_KEY || '');
 
-// New persona: investigative journalist meets cynical comedian
-const PERSONA_PROMPT = `You are an investigative journalist who moonlights as a cynical comedian.
+// Retention-optimized persona: investigative journalist with controlled intensity
+const PERSONA_PROMPT = `You are an investigative journalist pulling a friend aside to warn them about something urgent. Controlled intensity — not yelling, not calm. The energy of someone who found something and needs you to understand why it matters.
 
 YOUR VOICE:
-- Short sentences. Punchy.
-- Uses "You" and "They" constantly
-- Cynical but not nihilistic - you expose scams but don't despair
-- Explain like you're telling a friend about a scam at a bar
-- Use specific, vivid analogies (not generic metaphors)
+- Short sentences. Punchy. Specific.
+- Uses "You" and "They" constantly — this is personal
+- Cynical but not nihilistic — you expose systems but give people agency
+- Every claim grounded in incentives, not conspiracy. "The incentives reward this" — not "they're secretly plotting"
+- Vivid, specific analogies (max 2 sentences on any analogy before connecting back to the topic)
 - Rhetorical questions that land like punches
-- Occasional dark humor, never cringe
+- Dark humor that earns a grim laugh, never cringe
 
-WHAT YOU DON'T DO:
-- No "Let's dive in" or "Here's the thing"
+PROGRESSIVE INTENSITY:
+- First quarter: Curious, pulling them in. "Wait, have you noticed this?"
+- Second quarter: Revealing. "Here's what's actually happening."
+- Third quarter: Gut punch. "And it gets worse."
+- Final quarter: Empowering or darkly knowing. "Now you see it."
+
+RETENTION MECHANICS (use these actively):
+1. OPEN LOOPS: Tease upcoming info before delivering current info. "We'll get to why that number matters. First..."
+2. PATTERN INTERRUPTS: Break rhythm every 60-90 seconds. Shift from data to story, from "they" to "you", from explaining to questioning.
+3. MICRO-HOOKS: End every section with a forward reference that creates urgency for the next section.
+4. ESCALATION: Each tactic/example must be more shocking than the last. Never peak early.
+5. SPECIFICITY: Specific numbers, names, dates, and examples. "47%" not "nearly half." "$2.3 billion" not "billions."
+6. EMOTIONAL ANCHORING: Connect every abstract system to a visceral personal moment the viewer has lived.
+
+WHAT YOU NEVER DO:
+- No "Let's dive in" or "Here's the thing" or "Buckle up"
 - No balanced "to be fair" hedging
 - No passive voice ("mistakes were made")
 - No dry academic explanations
-- No filler transitions
+- No filler transitions ("Moving on", "Now let's talk about", "Speaking of which")
 - No emojis or exclamation marks
+- No extended metaphors before naming the topic — name the topic in sentence 1
+- No flat listing patterns (tactic 1, tactic 2, tactic 3 in identical structure) — vary the delivery
+- NEVER imply secret coordination or conspiracy. All wrongdoing must be explained through incentive structures and system design. Your audience is skeptical. Earn their trust with systems thinking, not paranoia.
 
 SCENE BREAKS:
-- Insert [SCENE_BREAK] frequently - every 8-15 words on average
+- Insert [SCENE_BREAK] frequently — every 8-15 words on average
 - Scene breaks create visual rhythm and pacing
 - A new visual beat = a new scene break
 - Minimum 40 scene breaks per full script
 
 EXAMPLE OF YOUR STYLE:
-"You've been lied to. That 'unlimited' plan? [SCENE_BREAK] It's a magic trick. And you're not the magician. [SCENE_BREAK] You're the sucker in the front row. [SCENE_BREAK] Let me show you how they pull it off."`;
+"Ghost jobs. You've applied to them. [SCENE_BREAK] That listing you spent 45 minutes tailoring your resume for? [SCENE_BREAK] It was never real. [SCENE_BREAK] The position was filled six months ago. Or it never existed at all. [SCENE_BREAK] And the company that posted it? They know. [SCENE_BREAK] Here's why they do it anyway."`;
 
 interface SectionConfig {
   type: ScriptSectionType;
@@ -47,90 +64,159 @@ interface SectionConfig {
 
 const SECTION_CONFIGS: SectionConfig[] = [
   {
-    type: 'hook',
-    title: 'The Hook',
-    targetWordRange: [180, 220],
-    instructions: `Open with a Lie vs Truth contrast. Hit them with what they believe, then pull the rug.
-Make it personal with "you".
-Build curiosity - why should they care?
-End with a cliffhanger that makes them NEED to keep listening.`,
-    endingGuidance: 'End on a cliffhanger. The viewer should feel: "Wait, what? I need to know more."',
+    type: 'cold_open',
+    title: 'Cold Open',
+    targetWordRange: [80, 120],
+    instructions: `STRUCTURE:
+- First sentence: Name the topic + shocking framing, under 15 words. No metaphors, no build-up.
+- Next 2-3 sentences: Make it personal with "you" — a scenario the viewer has lived.
+- Final sentence: Open a curiosity loop — tease what they don't know yet.
+
+ANTI-PATTERNS:
+- Do NOT open with a metaphor or analogy before naming the topic.
+- Do NOT use "Imagine this..." or any hypothetical framing.
+- Do NOT spend more than one sentence on any single image or comparison.
+
+RETENTION TECHNIQUE: Curiosity loop. The viewer must feel "I need to know why this happens" within 30 seconds.`,
+    endingGuidance: 'End with a forward reference that creates urgency: tease the personal cost or the hidden system without revealing it yet.',
+  },
+  {
+    type: 'stakes',
+    title: 'The Stakes',
+    targetWordRange: [200, 260],
+    instructions: `STRUCTURE:
+- Open with 2-3 visceral personal scenarios the viewer recognizes from their own life.
+- Transform what feels like bad luck or personal failure into evidence of an active system.
+- Use "you" constantly — this is happening TO them, not around them.
+- End by pivoting from personal pain to systemic cause: "This isn't bad luck. This is a business model."
+
+ANTI-PATTERNS:
+- Do NOT use vague emotional language ("it's frustrating"). Use specific scenarios instead.
+- Do NOT save the emotional punch for later — front-load it here.
+- Do NOT explain the system yet — just make the viewer feel the pain and suspect a cause.
+
+RETENTION TECHNIQUE: Emotional anchoring. The viewer commits because they feel personally attacked by the topic — not intellectually interested, emotionally invested.`,
+    endingGuidance: 'Transition to villain reveal: "And there is a reason this keeps happening to you."',
   },
   {
     type: 'villain_reveal',
     title: 'The Villain Reveal',
-    targetWordRange: [295, 360],
-    instructions: `Introduce the antagonist - the company, system, or design behind the scam.
-Use "They" language constantly - make it personal and deliberate.
-Show this wasn't an accident. It was DESIGNED this way.
-Name specific tactics, teams, or decisions if possible.
-Build the sense of betrayal.`,
-    endingGuidance: 'End by setting up the mechanism: "Here\'s exactly how they do it."',
+    targetWordRange: [250, 320],
+    instructions: `STRUCTURE:
+- Name the specific villain (company, industry body, system, incentive structure).
+- Include exactly ONE "Proof Anchor" — a specific, verifiable detail the viewer could look up themselves. Examples: a timestamped job listing reposted monthly since 2023, specific SEC filing language, an earnings call quote, a policy clause, a public data point. Frame it as: "Don't take my word for it — [specific thing] is right there if you look."
+- Deliver the most shocking statistic from the creative brief.
+- End with an open loop teasing the mechanism.
+
+ANTI-PATTERNS:
+- Do NOT use vague "they" without eventually naming who "they" are.
+- Do NOT present the villain as cartoonishly evil — present them as rationally following incentives.
+- Do NOT imply conspiracy — show how the system rewards this behavior.
+
+RETENTION TECHNIQUE: Proof Anchor + open loop. Trust goes up (verifiable claim), curiosity stays high (mechanism teased but not revealed).`,
+    endingGuidance: 'End by teasing the mechanism: "And the way they pull it off is almost elegant — if it weren\'t ruining your life."',
   },
   {
     type: 'mechanism',
     title: 'The Mechanism',
-    targetWordRange: [470, 575],
-    instructions: `This is the meat. Explain HOW the trick works.
-Use cynical, funny analogies - not dry explanations.
-Break down 2-4 specific tactics or steps.
-Make complex things feel obvious in hindsight.
-Include specific numbers, percentages, or examples where possible.
-Keep the "exposé" energy - you're revealing secrets.`,
-    endingGuidance: 'Transition to consequences: "And here\'s what that actually costs you."',
+    targetWordRange: [420, 520],
+    instructions: `STRUCTURE:
+- Break down 3 specific tactics or steps, each more shocking than the last. ESCALATE — never peak on tactic 1.
+- Vary the delivery structure for each tactic: lead with a story for one, lead with a number for another, lead with a rhetorical question for the third.
+- Insert a PATTERN INTERRUPT between tactics: shift from "they" to "you", from data to anecdote, from serious to darkly funny, or drop a one-line gut punch.
+- Use specific numbers, percentages, dates, and named examples. "47% of listings" not "nearly half."
+- Make complex systems feel obvious in hindsight — "Of course they do this. The incentives practically demand it."
+
+ANTI-PATTERNS:
+- Do NOT use identical parallel structure for all tactics (e.g., "Tactic 1: ... Tactic 2: ... Tactic 3: ...").
+- Do NOT explain all tactics at the same energy level — build intensity.
+- Do NOT use generic analogies. Every comparison must be specific and connect back to the topic within 2 sentences.
+- Do NOT let any single tactic run longer than 180 words without a pattern interrupt.
+
+RETENTION TECHNIQUE: Escalation + pattern interrupts. Viewers who think "I get it" after tactic 1 are surprised by tactic 2, and shocked by tactic 3. The varied structure prevents the "list fatigue" that kills mid-video retention.`,
+    endingGuidance: 'Transition to the twist: "But here is the part that changes everything."',
   },
   {
-    type: 'consequence',
-    title: 'The Consequence',
-    targetWordRange: [360, 445],
-    instructions: `Make it personal. This is where you build anger.
-Use "you" constantly - this affects THEM, the viewer.
-Show real costs: money, time, opportunity, dignity.
-Include specific scenarios they'll recognize from their own life.
-Build emotional momentum - they should feel tricked, angry, or frustrated.`,
-    endingGuidance: 'Set up the takeaway: "So what do you do about this?"',
+    type: 'twist',
+    title: 'The Twist',
+    targetWordRange: [280, 350],
+    instructions: `STRUCTURE:
+- Recontextualize everything the viewer just learned. The twist should make them rethink the entire video.
+- This is NOT new information — it's a new LENS on the information already presented.
+- Examples of good twists: "The system isn't broken — it's working exactly as designed", revealing the viewer is complicit, showing the problem is far bigger than the specific topic, revealing an unexpected beneficiary.
+- Use the twist from the creative brief as the foundation.
+- Build to the highest emotional intensity in the script here.
+
+ANTI-PATTERNS:
+- Do NOT introduce entirely new topics or tangents.
+- Do NOT make the twist feel like a conspiracy theory — ground it in incentives and systems.
+- Do NOT let the twist feel like a letdown after the mechanism — it must ELEVATE, not deflate.
+
+RETENTION TECHNIQUE: Recontextualization at the 65% mark. This is placed precisely where retention typically drops hardest. Viewers who were considering leaving now feel they have to stay because the entire video just changed meaning.`,
+    endingGuidance: 'Transition to takeaway with the weight of the recontextualization: "So where does that leave you?"',
   },
   {
     type: 'takeaway',
     title: 'The Takeaway',
-    targetWordRange: [220, 275],
-    instructions: `Land the plane with impact.
-Two options:
-1. CYNICAL: "They'll keep doing this. Here's why it won't change."
-2. EMPOWERING: "Now you know. Here's how to fight back."
-Pick ONE tone based on the topic - don't try to do both.
-End with a memorable line they might quote.`,
-    endingGuidance: 'Final line should be quotable, punchy, and land like a mic drop.',
+    targetWordRange: [170, 230],
+    instructions: `STRUCTURE:
+- Do NOT summarize the video. The viewer just watched it — they don't need a recap.
+- Deliver emotional payoff: the feeling the viewer should walk away with.
+- Choose ONE approach based on the topic:
+  A) EMPOWERING: Concrete, specific actions the viewer can take. Not vague advice — actual steps.
+  B) DARKLY KNOWING: "Now you see it. And you can't unsee it." The viewer joins the club of people who understand.
+- Final 1-2 sentences must be quotable. The kind of line someone screenshots and posts.
+
+ANTI-PATTERNS:
+- Do NOT recap the video's points.
+- Do NOT hedge with "it's complicated" or "there are no easy answers."
+- Do NOT end with a question unless it's genuinely haunting, not lazy.
+
+RETENTION TECHNIQUE: Emotional payoff + quotable closer. Viewers who stay to the end should feel rewarded, not lectured. The final line is the one they remember and share.`,
+    endingGuidance: 'Final line should be quotable, punchy, and land like a mic drop. This is the line they screenshot.',
   },
 ];
 
 /**
- * Generate the Tone & Angle Brief - the creative foundation for the script.
+ * Generate the Tone & Angle Brief - the retention-optimized creative foundation for the script.
  */
 async function generateToneAngleBrief(idea: IdeaInput): Promise<{ brief: ToneAngleBrief; usageMetadata?: UsageMetadata }> {
   const model = genAI.getGenerativeModel({ model: 'gemini-3-pro-preview' });
 
-  const prompt = `Analyze this video topic and create a creative brief for an exposé-style script.
+  const prompt = `Analyze this video topic and create a retention-optimized creative brief for an exposé-style script.
 
 TOPIC: ${idea.title}
 DESCRIPTION: ${idea.description}
 
 Create a brief that answers:
-1. WHO is the villain? (company, industry, system - be specific)
-2. What's the CENTRAL METAPHOR? (one vivid analogy that captures the scam)
+1. WHO is the villain? (a specific named entity — company, industry body, or system. Not vague "corporations")
+2. What's the COLD OPEN? (Write the actual first sentence of the script. Under 15 words. Must name the topic directly. No metaphors, no build-up.)
 3. What's the LIE people believe vs the TRUTH?
-4. What's the EMOTIONAL ARC? (what should viewers feel by the end?)
-5. How SAVAGE should we be? (mild/moderate/savage - based on how egregious the topic is)
+4. What are 3 SHOCK FACTS? (The first must be a verifiable proof anchor — something the viewer could look up themselves, like a specific filing, policy clause, or public data point. The other two should be specific statistics or named examples.)
+5. What's the TWIST? (How does this recontextualize everything at the 65% mark? Not new info — a new lens on existing info. Example: "The system isn't broken — it's working exactly as designed.")
+6. What's the EMOTIONAL JOURNEY? (What should viewers feel at each quarter: Q1 curiosity, Q2 recognition, Q3 anger/shock, Q4 empowerment or dark knowledge?)
+7. How SAVAGE should we be? (mild/moderate/savage — based on how egregious the topic is)
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
-  "villain": "specific entity or system",
-  "centralMetaphor": "one vivid analogy",
+  "villain": "specific named entity or system",
+  "coldOpen": "First sentence of the script, under 15 words, names the topic directly",
   "lieTruthContrast": {
     "lie": "what people believe",
     "truth": "the reality"
   },
-  "emotionalArc": "starting emotion -> ending emotion",
+  "shockFacts": [
+    "verifiable proof anchor (something the viewer could look up)",
+    "specific statistic with source context",
+    "specific statistic or named example"
+  ],
+  "twist": "the recontextualization that changes the meaning of everything before it",
+  "emotionalJourney": {
+    "q1": "emotion at 0-25%",
+    "q2": "emotion at 25-50%",
+    "q3": "emotion at 50-75%",
+    "q4": "emotion at 75-100%"
+  },
   "cynicismLevel": "mild|moderate|savage"
 }`;
 
@@ -181,10 +267,12 @@ DESCRIPTION: ${idea.description}
 
 CREATIVE BRIEF:
 - Villain: ${brief.villain}
-- Central Metaphor: ${brief.centralMetaphor}
+- Cold Open (use this as the first sentence): ${brief.coldOpen}
 - The Lie: ${brief.lieTruthContrast.lie}
 - The Truth: ${brief.lieTruthContrast.truth}
-- Emotional Arc: ${brief.emotionalArc}
+- Shock Facts: 1) ${brief.shockFacts[0]} 2) ${brief.shockFacts[1]} 3) ${brief.shockFacts[2]}
+- The Twist (for recontextualization at 65%): ${brief.twist}
+- Emotional Journey: Q1=${brief.emotionalJourney.q1}, Q2=${brief.emotionalJourney.q2}, Q3=${brief.emotionalJourney.q3}, Q4=${brief.emotionalJourney.q4}
 - Cynicism Level: ${brief.cynicismLevel}
 ${previousContext}
 
@@ -350,22 +438,23 @@ export async function generateIdeas(
     ? `\n\nEXISTING IDEAS (do not repeat these):\n${existingTitles.map(t => `- ${t}`).join('\n')}`
     : '';
 
-  const prompt = `Generate ${count} unique video ideas for an analytical YouTube channel.
+  const prompt = `Generate ${count} unique video ideas for an exposé-style YouTube channel.
 
 ${CHANNEL_BRIEF.toPromptContext()}
 
 IDEA REQUIREMENTS:
-- Focus on hidden systems, dark patterns, behavioral design, or counterintuitive economics
-- Each idea should reveal something non-obvious about everyday products/services
-- Titles should be intriguing but not clickbait
-- Descriptions should outline the main points to cover
+- The viewer must be PERSONALLY affected by the topic (job market, subscriptions, housing, healthcare, banking, education, food, tech platforms)
+- There must be a clear, NAMED villain (specific company, industry body, or incentive structure — not vague "corporations")
+- There must be a TWIST that recontextualizes the topic (the system isn't broken — it's working as designed; the viewer is unknowingly complicit; the problem is far bigger than it seems)
+- Titles must use curiosity gaps or negativity bias — NOT generic "How X Works" or "The Truth About X"
+- Descriptions should outline: the personal pain point, the villain, the mechanism, and the twist
 ${existingList}
 
 OUTPUT FORMAT (JSON array):
 [
   {
-    "title": "The Exact Psychology Behind 'Limited Time Offers'",
-    "description": "Explore how artificial scarcity triggers loss aversion. Cover: countdown timers, flash sales, seasonal releases. Case studies: fast fashion, airline tickets, streaming content."
+    "title": "Your Landlord's Favorite Legal Loophole",
+    "description": "Most renters think rent increases are market-driven. They're not. Cover: how REITs use algorithmic pricing software (RealPage) to coordinate rent increases across competing properties without technically colluding. The twist: renters are funding the software through their own rent payments. Villain: RealPage and institutional landlords. Personal impact: average $150/month overcharge."
   }
 ]
 

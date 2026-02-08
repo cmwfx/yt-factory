@@ -94,8 +94,8 @@ export type VideoStatus =
   | 'done'
   | 'failed';
 
-// Section-chained script generation types
-export type ScriptSectionType = 'hook' | 'villain_reveal' | 'mechanism' | 'consequence' | 'takeaway';
+// Section-chained script generation types (6-section retention-optimized structure)
+export type ScriptSectionType = 'cold_open' | 'stakes' | 'villain_reveal' | 'mechanism' | 'twist' | 'takeaway';
 
 export interface ScriptSection {
   type: ScriptSectionType;
@@ -107,9 +107,11 @@ export interface ScriptSection {
 
 export interface ToneAngleBrief {
   villain: string;
-  centralMetaphor: string;
+  coldOpen: string;
   lieTruthContrast: { lie: string; truth: string };
-  emotionalArc: string;
+  shockFacts: [string, string, string];
+  twist: string;
+  emotionalJourney: { q1: string; q2: string; q3: string; q4: string };
   cynicismLevel: 'mild' | 'moderate' | 'savage';
 }
 

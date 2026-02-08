@@ -1,12 +1,12 @@
 export const CHANNEL_BRIEF = {
-  theme: `A calm, analytical explainer channel revealing hidden systems behind everyday products and behaviors (subscriptions, free trials, friction, defaults, incentives).`,
+  theme: `An exposé channel that makes viewers feel like insiders. Reveals hidden, legal-but-predatory systems behind everyday corporate behavior. Every video should feel like a friend pulling you aside to warn you about something urgent that directly affects your life.`,
 
-  tone: ['Calm', 'Skeptical', 'Analytical', 'No hype', 'No moralizing'] as const,
+  tone: ['Controlled intensity', 'Incentive-driven urgency', 'Sharp-witted', 'Specific over vague', 'Escalating stakes', 'No moralizing'] as const,
 
   format: {
     aspectRatio: '16:9',
     targetDuration: '~10 minutes',
-    targetWordCount: 1500,
+    targetWordCount: 1700,
     pacing: 'Fast pacing with frequent visual changes (every ~2–5s)',
     visualStyle: 'Stick-figure-like editorial illustrations on textured paper backgrounds',
   },
@@ -23,46 +23,53 @@ Visual Style: ${this.format.visualStyle}
   },
 };
 
-// Script structure for section-chained generation
+// Script structure for section-chained generation (6-section retention-optimized)
 export const SCRIPT_STRUCTURE = {
   sections: [
     {
-      type: 'hook' as const,
-      title: 'The Hook',
-      targetWordRange: [150, 200] as [number, number],
-      percentageOfTotal: 10,
-      purpose: 'Lie vs Truth contrast. Cliffhanger ending.',
+      type: 'cold_open' as const,
+      title: 'Cold Open',
+      targetWordRange: [80, 120] as [number, number],
+      percentageOfTotal: 6,
+      purpose: 'Name topic sentence 1. Personal stakes. Curiosity loop.',
+    },
+    {
+      type: 'stakes' as const,
+      title: 'The Stakes',
+      targetWordRange: [200, 260] as [number, number],
+      percentageOfTotal: 14,
+      purpose: 'Front-load personal pain. Transform bad luck into active betrayal.',
     },
     {
       type: 'villain_reveal' as const,
       title: 'The Villain Reveal',
       targetWordRange: [250, 320] as [number, number],
-      percentageOfTotal: 18,
-      purpose: 'Personify the antagonist. "They" language, deliberate design.',
+      percentageOfTotal: 17,
+      purpose: 'Named villain. Proof Anchor. Shocking stat. Open loop.',
     },
     {
       type: 'mechanism' as const,
       title: 'The Mechanism',
-      targetWordRange: [410, 500] as [number, number],
-      percentageOfTotal: 28,
-      purpose: 'Explain with cynical/funny analogies. NOT dry facts.',
+      targetWordRange: [420, 520] as [number, number],
+      percentageOfTotal: 29,
+      purpose: '3 escalating tactics with pattern interrupts. Never peak early.',
     },
     {
-      type: 'consequence' as const,
-      title: 'The Consequence',
-      targetWordRange: [310, 390] as [number, number],
-      percentageOfTotal: 22,
-      purpose: 'Make it personal. Build anger. Uses "you".',
+      type: 'twist' as const,
+      title: 'The Twist',
+      targetWordRange: [280, 350] as [number, number],
+      percentageOfTotal: 19,
+      purpose: 'Recontextualize everything at 65%. Recapture dropping viewers.',
     },
     {
       type: 'takeaway' as const,
       title: 'The Takeaway',
-      targetWordRange: [180, 250] as [number, number],
+      targetWordRange: [170, 230] as [number, number],
       percentageOfTotal: 12,
-      purpose: 'Cynical or empowering conclusion. Memorable ending.',
+      purpose: 'Emotional payoff. Quotable mic-drop closer.',
     },
   ],
-  totalTargetWords: 1500,
+  totalTargetWords: 1700,
   minSceneBreaks: 40,
   sceneBreakDensity: 15, // 1 scene break per ~15 words minimum
 } as const;
