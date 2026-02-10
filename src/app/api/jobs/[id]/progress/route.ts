@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
-import { getVideo } from '@/lib/db';
+import { getVideo, getBatchJobsByVideoId } from '@/lib/db';
+import { getDownloadProgress } from '@/ai/batchImageGen';
+import { loadJson } from '@/utils/fileStore';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -98,6 +100,42 @@ export async function GET(request: NextRequest, context: RouteContext) {
               : null,
           }));
 
+          // Check for active batch downloads
+          let batchDownload: {
+            batchName: string;
+            phase: number;
+            bytesDownloaded: number;
+            elapsedMs: number;
+          } | null = null;
+
+          if (currentStep === 'images_batch1' || currentStep === 'images_batch2' || video.status.startsWith('images_batch')) {
+            const batchJobs = await getBatchJobsByVideoId(video.id);
+            for (const job of batchJobs) {
+              if (job.status === 'running' || job.status === 'pending') {
+                const dl = getDownloadProgress(job.batchName);
+                if (dl) {
+                  batchDownload = {
+                    batchName: job.batchName,
+                    phase: job.phase,
+                    bytesDownloaded: dl.bytesDownloaded,
+                    elapsedMs: Date.now() - dl.startedAt,
+                  };
+                  break;
+                }
+              }
+            }
+          }
+
+          // Load batch phase summaries for completed phases
+          let batchSummary: { phase1?: Record<string, unknown>; phase2?: Record<string, unknown> } | null = null;
+          const p1 = await loadJson<Record<string, unknown>>(id, 'batch_phase1_summary.json');
+          const p2 = await loadJson<Record<string, unknown>>(id, 'batch_phase2_summary.json');
+          if (p1 || p2) {
+            batchSummary = {};
+            if (p1) batchSummary.phase1 = p1;
+            if (p2) batchSummary.phase2 = p2;
+          }
+
           if (!sendEvent({
             videoId: video.id,
             title: video.title,
@@ -105,6 +143,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
             currentStep,
             progress,
             steps,
+            batchDownload,
+            batchSummary,
           })) {
             return false;
           }

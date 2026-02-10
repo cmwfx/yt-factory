@@ -10,6 +10,22 @@ export interface StepProgress {
   durationMs: number | null;
 }
 
+export interface BatchDownloadInfo {
+  batchName: string;
+  phase: number;
+  bytesDownloaded: number;
+  elapsedMs: number;
+}
+
+export interface BatchPhaseSummary {
+  phase: number;
+  totalScenes: number;
+  batchSucceeded: number;
+  retriedDirectly: number;
+  retriedSucceeded: number;
+  failedSceneIndices: number[];
+}
+
 export interface JobProgress {
   videoId: string;
   title: string;
@@ -17,6 +33,11 @@ export interface JobProgress {
   currentStep: string | null;
   progress: number;
   steps: StepProgress[];
+  batchDownload: BatchDownloadInfo | null;
+  batchSummary: {
+    phase1?: BatchPhaseSummary;
+    phase2?: BatchPhaseSummary;
+  } | null;
 }
 
 export interface UseJobProgressResult {

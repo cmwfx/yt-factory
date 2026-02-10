@@ -28,8 +28,8 @@ export async function POST(
     return {
       sceneIndex: idx,
       text: scene.text,
-      audioPath: `/jobs/${id}/audio.wav`,
-      imagePath: `/jobs/${id}/${imageFilename}`,
+      audioPath: `/api/jobs/${id}/files/audio.wav`,
+      imagePath: `/api/jobs/${id}/files/${imageFilename}`,
       startTime: scene.startTime,
       endTime: scene.endTime,
       duration: scene.duration,

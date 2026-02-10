@@ -22,6 +22,7 @@ export default function VideoDetailsPage({ params }: PageProps) {
   const [generatingTitles, setGeneratingTitles] = useState(false);
   const [generatingDescription, setGeneratingDescription] = useState(false);
   const [generatingThumbnails, setGeneratingThumbnails] = useState(false);
+  const [revertingToReview, setRevertingToReview] = useState(false);
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this video?')) return;
@@ -120,6 +121,29 @@ export default function VideoDetailsPage({ params }: PageProps) {
     }
   };
 
+  const handleRevertToReview = async () => {
+    if (!confirm('Revert this video to review? You can re-adjust scenes and render again.')) {
+      return;
+    }
+
+    try {
+      setRevertingToReview(true);
+      const res = await fetch(`/api/videos/${resolvedParams.id}/revert-to-review`, {
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to revert to review');
+      }
+
+      router.push(`/videos/${resolvedParams.id}/review`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to revert to review');
+      setRevertingToReview(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen p-8">
@@ -190,6 +214,15 @@ export default function VideoDetailsPage({ params }: PageProps) {
               <a href={`/api/videos/${resolvedParams.id}/download`} download>
                 <Button variant="primary">Download Video</Button>
               </a>
+            )}
+            {video.status === 'done' && (
+              <Button
+                variant="secondary"
+                onClick={handleRevertToReview}
+                loading={revertingToReview}
+              >
+                Revert to Review
+              </Button>
             )}
             <Button variant="danger" onClick={handleDelete} loading={deleting}>Delete</Button>
           </div>
@@ -366,7 +399,7 @@ export default function VideoDetailsPage({ params }: PageProps) {
               {video.thumbnailPrompts.map((prompt, idx) => (
                 <div key={idx} className="space-y-2">
                   <img
-                    src={`/jobs/${video.id}/thumbnail_${idx + 1}.png`}
+                    src={`/api/jobs/${video.id}/files/thumbnail_${idx + 1}.png`}
                     alt={`Thumbnail ${idx + 1}`}
                     className="w-full rounded-lg border border-[#27272a] hover:scale-[1.02] transition-transform cursor-pointer"
                   />

@@ -20,12 +20,18 @@ import {
   readImageAsBase64,
   getStyleReferenceBase64,
 } from '@/ai/batchImageGen';
+import { generateSceneImage, setCharacterFirstAppearance, resetCharacterMemory } from '@/ai/nanoBanana';
 import { getCharacterAnchors } from '@/utils/batchPlanner';
-import { loadJson, ensureJobDir, getFilePath, listFiles } from '@/utils/fileStore';
+import { loadJson, saveJson, ensureJobDir, getFilePath, listFiles } from '@/utils/fileStore';
 import { sendTelegramMessage } from '@/lib/telegram';
 import type { Scene, CharacterType } from '@/types';
 
 let pollerInterval: ReturnType<typeof setInterval> | null = null;
+// Track jobs currently being processed to prevent duplicate work across poll cycles
+const inFlightJobs = new Set<string>();
+// Track download attempts per batch to prevent infinite retry loops
+const downloadAttempts = new Map<string, number>();
+const MAX_DOWNLOAD_ATTEMPTS = 5;
 
 export function startBatchPoller() {
   if (pollerInterval) return;
@@ -47,31 +53,53 @@ async function pollBatches() {
     const pendingJobs = await getPendingBatchJobs();
     if (pendingJobs.length === 0) return;
 
-    console.log(`[batchPoller] Checking ${pendingJobs.length} pending batch jobs...`);
+    // Filter out jobs already being processed by a previous poll cycle
+    const newJobs = pendingJobs.filter(j => !inFlightJobs.has(j.id));
+    if (newJobs.length === 0) {
+      console.log(`[batchPoller] ${pendingJobs.length} jobs pending, all already in-flight`);
+      return;
+    }
 
-    for (const job of pendingJobs) {
-      try {
-        const status = await checkBatchStatus(job.batchName);
-        console.log(`[batchPoller] Batch ${job.batchName} (phase ${job.phase}): ${status.state}`);
+    console.log(`[batchPoller] Checking ${newJobs.length} pending batch jobs (${inFlightJobs.size} already in-flight)...`);
 
-        if (status.state === 'JOB_STATE_SUCCEEDED' || status.state === 'BATCH_STATE_SUCCEEDED' || status.state === 'STATE_SUCCEEDED') {
-          await handleBatchSuccess(job);
-        } else if (status.state === 'JOB_STATE_FAILED' || status.state === 'BATCH_STATE_FAILED' || status.state === 'STATE_FAILED') {
-          await handleBatchFailure(job);
-        } else if (status.state === 'JOB_STATE_RUNNING' || status.state === 'BATCH_STATE_RUNNING' || status.state === 'STATE_RUNNING') {
-          // Update status to running if currently pending
-          if (job.status === 'pending') {
-            await updateBatchJobStatus(job.id, 'running');
-          }
-        }
-        // Otherwise still pending/processing, do nothing
-      } catch (error) {
-        console.error(`[batchPoller] Error checking batch ${job.batchName}:`, error);
+    // Process all jobs in parallel so one hanging job doesn't block others.
+    // No per-job timeout — let streaming downloads run to completion.
+    const results = await Promise.allSettled(
+      newJobs.map(job => {
+        inFlightJobs.add(job.id);
+        return processJob(job).finally(() => inFlightJobs.delete(job.id));
+      })
+    );
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result.status === 'rejected') {
+        console.error(
+          `[batchPoller] Job ${newJobs[i].batchName} failed:`,
+          result.reason
+        );
       }
     }
   } catch (error) {
     console.error('[batchPoller] Poll error:', error);
   }
+}
+
+async function processJob(job: Awaited<ReturnType<typeof getPendingBatchJobs>>[number]) {
+  const status = await checkBatchStatus(job.batchName);
+  console.log(`[batchPoller] Batch ${job.batchName} (phase ${job.phase}): ${status.state}`);
+
+  if (status.state === 'JOB_STATE_SUCCEEDED' || status.state === 'BATCH_STATE_SUCCEEDED' || status.state === 'STATE_SUCCEEDED') {
+    await handleBatchSuccess(job);
+  } else if (status.state === 'JOB_STATE_FAILED' || status.state === 'BATCH_STATE_FAILED' || status.state === 'STATE_FAILED') {
+    await handleBatchFailure(job);
+  } else if (status.state === 'JOB_STATE_RUNNING' || status.state === 'BATCH_STATE_RUNNING' || status.state === 'STATE_RUNNING') {
+    // Update status to running if currently pending
+    if (job.status === 'pending') {
+      await updateBatchJobStatus(job.id, 'running');
+    }
+  }
+  // Otherwise still pending/processing, do nothing
 }
 
 async function handleBatchSuccess(job: {
@@ -85,9 +113,54 @@ async function handleBatchSuccess(job: {
   const sceneIndices = job.sceneIndices as number[];
   const jobDir = await ensureJobDir(job.videoId);
 
+  // Increment and check retry counter to prevent infinite retry loops
+  const attempts = (downloadAttempts.get(job.batchName) || 0) + 1;
+  downloadAttempts.set(job.batchName, attempts);
+
+  if (attempts > MAX_DOWNLOAD_ATTEMPTS) {
+    console.error(`[batchPoller] Download for ${job.batchName} failed after ${MAX_DOWNLOAD_ATTEMPTS} attempts — marking as failed`);
+    downloadAttempts.delete(job.batchName);
+    await handleBatchFailure(job);
+    return;
+  }
+
+  console.log(`[batchPoller] Download attempt ${attempts}/${MAX_DOWNLOAD_ATTEMPTS} for ${job.batchName}`);
+
   // Download results
   const savedImages = await downloadBatchResults(job.batchName, sceneIndices, jobDir);
-  console.log(`[batchPoller] Downloaded ${savedImages.size} images for phase ${job.phase}`);
+  console.log(`[batchPoller] Downloaded ${savedImages.size}/${sceneIndices.length} images for phase ${job.phase}`);
+
+  // Guard: if no images were downloaded, don't mark as succeeded — retry next cycle
+  if (savedImages.size === 0) {
+    console.error(`[batchPoller] Downloaded 0 images for ${job.batchName} — will retry next cycle`);
+    return;
+  }
+
+  // Success — clear the retry counter
+  downloadAttempts.delete(job.batchName);
+
+  // Identify scenes that failed in the batch and retry individually
+  const failedIndices = sceneIndices.filter(idx => !savedImages.has(idx));
+  if (failedIndices.length > 0) {
+    console.log(`[batchPoller] ${failedIndices.length} scenes failed in batch, retrying individually: ${failedIndices.join(', ')}`);
+    const retried = await retryFailedScenes(job.videoId, failedIndices, jobDir);
+    for (const [idx, filePath] of retried) {
+      savedImages.set(idx, filePath);
+    }
+    console.log(`[batchPoller] Retried ${retried.size}/${failedIndices.length} failed scenes successfully`);
+  }
+
+  // Save batch summary for frontend display
+  const batchSucceeded = sceneIndices.length - failedIndices.length;
+  await saveJson(job.videoId, `batch_phase${job.phase}_summary.json`, {
+    phase: job.phase,
+    totalScenes: sceneIndices.length,
+    batchSucceeded,
+    retriedDirectly: failedIndices.length,
+    retriedSucceeded: failedIndices.length > 0 ? savedImages.size - batchSucceeded : 0,
+    failedSceneIndices: failedIndices,
+    timestamp: new Date().toISOString(),
+  });
 
   // Create asset records for downloaded images
   for (const [sceneIdx, imagePath] of savedImages) {
@@ -216,6 +289,69 @@ async function handleAllImagesReady(videoId: string) {
   } catch (error) {
     console.error(`[batchPoller] Failed to import/call continuePipeline:`, error);
   }
+}
+
+async function retryFailedScenes(
+  videoId: string,
+  failedIndices: number[],
+  jobDir: string
+): Promise<Map<number, string>> {
+  const results = new Map<number, string>();
+
+  const scenes = await loadJson<Scene[]>(videoId, 'scene_meta.json');
+  const plan = await loadJson<{
+    phase1: number[];
+    phase2: number[];
+    phase2References: [number, number][];
+  }>(videoId, 'batch_plan.json');
+
+  if (!scenes || !plan) {
+    console.error('[batchPoller] Cannot load scenes/plan for retry');
+    return results;
+  }
+
+  // Pre-populate character anchors from phase 1 images
+  resetCharacterMemory();
+  const characterAnchors = getCharacterAnchors(scenes, plan.phase1);
+  for (const [char, sceneIdx] of characterAnchors) {
+    const imagePath = getFilePath(videoId, `scene_${sceneIdx.toString().padStart(3, '0')}.png`);
+    setCharacterFirstAppearance(char, imagePath);
+  }
+
+  const phase2RefMap = new Map<number, number>(plan.phase2References);
+
+  for (const idx of failedIndices) {
+    const scene = scenes[idx];
+    if (!scene) {
+      console.warn(`[batchPoller] Scene ${idx} not found in scene_meta.json, skipping`);
+      continue;
+    }
+
+    const outputPath = `${jobDir}/scene_${idx.toString().padStart(3, '0')}.png`;
+
+    // Resolve reference image for CHARACTER_REACTION / OBJECT_FOCUS
+    let previousImagePath: string | null = null;
+    const refIdx = phase2RefMap.get(idx);
+    if (refIdx !== undefined) {
+      previousImagePath = getFilePath(videoId, `scene_${refIdx.toString().padStart(3, '0')}.png`);
+    }
+
+    try {
+      console.log(`[batchPoller] Retrying scene ${idx} individually...`);
+      await generateSceneImage(scene, previousImagePath, outputPath);
+      results.set(idx, outputPath);
+      console.log(`[batchPoller] Scene ${idx} retry succeeded`);
+    } catch (err) {
+      console.error(`[batchPoller] Scene ${idx} retry failed:`, err);
+    }
+
+    // Rate limit between retries
+    if (failedIndices.indexOf(idx) < failedIndices.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
+
+  return results;
 }
 
 async function handleBatchFailure(job: {

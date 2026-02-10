@@ -25,55 +25,77 @@ model User {
 }
 
 model Video {
-  id              String      @id @default(uuid())
-  ideaId          String?
-  idea            Idea?       @relation(fields: [ideaId], references: [id])
-  title           String
-  status          VideoStatus @default(queued)
-  script          String?     @db.Text
-  clickbaitTitles String[]    @default([])
-  seoDescription  String?     @db.Text
-  seoKeywords     String[]    @default([])
-  thumbnailPrompts String[]   @default([])
-  costCents       Int?        // Total estimated cost in cents
-  costBreakdown   Json?       // { geminiText, geminiTTS, geminiImage, assemblyAI }
-  reviewData      Json?       // Stores { adjustments, regeneratedImages, averageConfidence }
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  assets          Asset[]
-  steps           Step[]
-  batchJobs       BatchJob[]
+  id               String      @id @default(uuid())
+  ideaId           String?
+  title            String
+  status           VideoStatus @default(queued)
+  script           String?
+  clickbaitTitles  String[]    @default([])
+  seoDescription   String?
+  seoKeywords      String[]    @default([])
+  thumbnailPrompts String[]    @default([])
+  costCents        Int?
+  costBreakdown    Json?
+  reviewData       Json?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  assets           Asset[]
+  batchJobs        BatchJob[]
+  steps            Step[]
+  idea             Idea?       @relation(fields: [ideaId], references: [id])
 }
 
 model BatchJob {
-  id            String   @id @default(uuid())
-  videoId       String
-  video         Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  phase         Int      // 1 or 2
-  batchName     String   // Gemini batch job name
-  status        String   @default("pending") // pending, running, succeeded, failed, cancelled
-  sceneIndices  Json     // Array of scene indices in this batch
-  resultFile    String?  // Gemini result file name
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(uuid())
+  videoId      String
+  phase        Int
+  batchName    String
+  status       String   @default("pending")
+  sceneIndices Json
+  resultFile   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  video        Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
 }
 
 model Schedule {
-  id              String   @id @default(uuid())
-  intervalHours   Int
-  enabled         Boolean  @default(true)
-  generateIdeas   Boolean  @default(true)
-  enableReview    Boolean  @default(false)
-  lastRunAt       DateTime?
-  nextRunAt       DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String    @id @default(uuid())
+  intervalHours Int
+  enabled       Boolean   @default(true)
+  generateIdeas Boolean   @default(true)
+  enableReview  Boolean   @default(false)
+  lastRunAt     DateTime?
+  nextRunAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model RenderLock {
-  id        String   @id @default("singleton")
-  videoId   String?
-  lockedAt  DateTime?
+  id       String    @id @default("singleton")
+  videoId  String?
+  lockedAt DateTime?
+}
+
+model Asset {
+  id        String    @id @default(uuid())
+  videoId   String
+  type      AssetType
+  filename  String
+  path      String
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  video     Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+}
+
+model Step {
+  id         String     @id @default(uuid())
+  videoId    String
+  step       StepName
+  status     StepStatus @default(pending)
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  video      Video      @relation(fields: [videoId], references: [id], onDelete: Cascade)
 }
 
 enum VideoStatus {
@@ -92,34 +114,12 @@ enum VideoStatus {
   failed
 }
 
-model Asset {
-  id        String    @id @default(uuid())
-  videoId   String
-  video     Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  type      AssetType
-  filename  String
-  path      String
-  metadata  Json?
-  createdAt DateTime  @default(now())
-}
-
 enum AssetType {
   script
   image
   audio
   captions
   video
-}
-
-model Step {
-  id         String     @id @default(uuid())
-  videoId    String
-  video      Video      @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  step       StepName
-  status     StepStatus @default(pending)
-  error      String?    @db.Text
-  startedAt  DateTime?
-  finishedAt DateTime?
 }
 
 enum StepName {

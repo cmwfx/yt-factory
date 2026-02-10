@@ -228,6 +228,15 @@ const SCENES_PER_CHUNK = 50;
  * Generate speech for scenes using scene-based chunking.
  * Chunks by scene count (50 scenes per chunk) instead of character count.
  * Provides predictable chunking and maintains semantic integrity.
+ *
+ * Flow consistency across chunks is maintained through:
+ * 1. Using the same voice parameter for all chunks (ensures identical voice characteristics)
+ * 2. Prompt engineering instructing continuous narration (see line 77)
+ * 3. Direct PCM concatenation without re-encoding (prevents artifacts)
+ *
+ * Note: The Gemini TTS API does not expose pitch, speaking rate, or stability controls.
+ * Consistency relies on the prebuilt voice being deterministic across API calls and
+ * the prompt reinforcing continuous delivery.
  */
 export async function generateSceneBasedAudio(
   scenes: Scene[],

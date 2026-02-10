@@ -86,14 +86,14 @@ export async function runAudioWorker(input: AudioWorkerInput): Promise<AudioWork
     const audioPath = getFilePath(videoId, audioFilename);
 
     // Generate audio using scene-based chunking (50 scenes per chunk)
-    const result = await generateSceneBasedAudio(scenes, audioPath, VOICES.CHARON);
+    const result = await generateSceneBasedAudio(scenes, audioPath, VOICES.ALGENIB);
 
     const totalDuration = result.duration;
 
     // Create asset record (no sceneDurations in this approach - alignment uses transcription)
     await createAsset(videoId, 'audio', audioFilename, audioPath, {
       duration: totalDuration,
-      voice: VOICES.CHARON,
+      voice: VOICES.ALGENIB,
     });
 
     await completeStep(step.id);

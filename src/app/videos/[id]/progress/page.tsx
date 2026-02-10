@@ -3,7 +3,7 @@
 import { use } from 'react';
 import Link from 'next/link';
 import { CircularProgress } from '@/components/ui/CircularProgress';
-import { useJobProgress } from '@/hooks/useJobProgress';
+import { useJobProgress, type BatchPhaseSummary } from '@/hooks/useJobProgress';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -41,6 +41,17 @@ function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function formatSpeed(bytesPerSec: number): string {
+  if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`;
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
+  return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`;
 }
 
 export default function ProgressPage({ params }: PageProps) {
@@ -142,6 +153,86 @@ export default function ProgressPage({ params }: PageProps) {
                   : 'Waiting for the pipeline to begin...'}
               </p>
             </div>
+
+            {/* Batch download progress */}
+            {progress.batchDownload && (
+              <div className="w-full bg-[#18181b] border border-indigo-600/30 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <svg className="w-4 h-4 text-indigo-400 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span className="text-sm font-medium text-white">
+                    Downloading Batch Phase {progress.batchDownload.phase}
+                  </span>
+                </div>
+
+                {/* Download stats */}
+                <div className="grid grid-cols-3 gap-4 mb-3">
+                  <div>
+                    <div className="text-xs text-zinc-500">Downloaded</div>
+                    <div className="text-lg font-semibold text-white">
+                      {formatBytes(progress.batchDownload.bytesDownloaded)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-zinc-500">Speed</div>
+                    <div className="text-lg font-semibold text-white">
+                      {progress.batchDownload.elapsedMs > 0
+                        ? formatSpeed((progress.batchDownload.bytesDownloaded / progress.batchDownload.elapsedMs) * 1000)
+                        : '...'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-zinc-500">Elapsed</div>
+                    <div className="text-lg font-semibold text-white">
+                      {formatDuration(progress.batchDownload.elapsedMs)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progress bar (indeterminate since we don't know total size) */}
+                <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full animate-pulse"
+                    style={{ width: '100%', opacity: 0.6 }}
+                  />
+                </div>
+                <p className="text-xs text-zinc-500 mt-2">
+                  Streaming batch results from Google API...
+                </p>
+              </div>
+            )}
+
+            {/* Batch retry summary */}
+            {progress.batchSummary && (() => {
+              const phases = [progress.batchSummary!.phase1, progress.batchSummary!.phase2].filter(
+                (p): p is BatchPhaseSummary => !!p && p.retriedDirectly > 0
+              );
+              if (phases.length === 0) return null;
+              const allRetriesOk = phases.every(p => p.retriedSucceeded === p.retriedDirectly);
+              return (
+                <div className={`w-full bg-[#18181b] border rounded-xl p-5 ${allRetriesOk ? 'border-emerald-600/30' : 'border-amber-600/30'}`}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <svg className={`w-4 h-4 ${allRetriesOk ? 'text-emerald-400' : 'text-amber-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span className="text-sm font-medium text-white">Batch Image Summary</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {phases.map(p => (
+                      <div key={p.phase} className="flex items-center gap-2 text-sm">
+                        <span className="text-zinc-400">Phase {p.phase}:</span>
+                        <span className="text-white">{p.batchSucceeded} from batch</span>
+                        <span className="text-zinc-600">·</span>
+                        <span className={allRetriesOk ? 'text-emerald-400' : 'text-amber-400'}>
+                          {p.retriedSucceeded}/{p.retriedDirectly} regenerated directly
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Step pipeline list */}
             <div className="w-full space-y-1.5">

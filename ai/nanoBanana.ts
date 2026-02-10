@@ -46,6 +46,16 @@ export function resetCharacterMemory(): void {
 }
 
 /**
+ * Pre-populate a character anchor so generateSceneImage() can use it
+ * in contexts where images were generated externally (e.g. batch).
+ */
+export function setCharacterFirstAppearance(char: CharacterType, imagePath: string): void {
+  if (!characterFirstAppearance.has(char)) {
+    characterFirstAppearance.set(char, imagePath);
+  }
+}
+
+/**
  * Read an image file and return its base64 encoding.
  */
 async function readImageAsBase64(imagePath: string): Promise<string> {

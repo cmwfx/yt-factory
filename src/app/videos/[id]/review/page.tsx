@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -13,6 +14,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [scenes, setScenes] = useState<ReviewSceneData[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [adjustments, setAdjustments] = useState<Map<number, number>>(new Map());
@@ -23,7 +25,14 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   // Load review data
   useEffect(() => {
     fetch(`/api/videos/${id}/review`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) {
+          return res.json().then(data => {
+            throw new Error(data.error || 'Failed to load review data');
+          });
+        }
+        return res.json();
+      })
       .then(data => {
         setScenes(data.scenes);
         setAlignmentConfidence(data.alignmentConfidence);
@@ -31,6 +40,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
       })
       .catch(err => {
         console.error('Failed to load review data:', err);
+        setFileError(err.message);
         setLoading(false);
       });
   }, [id]);
@@ -199,6 +209,22 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
         <div className="text-zinc-300">Loading review data...</div>
+      </div>
+    );
+  }
+
+  if (fileError) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <Card variant="glass" className="max-w-md">
+          <div className="p-8 text-center">
+            <h2 className="text-xl font-semibold text-white mb-4">Error Loading Review</h2>
+            <p className="text-zinc-400 mb-4">{fileError}</p>
+            <Link href={`/videos/${id}`}>
+              <Button variant="secondary">Back to Video Details</Button>
+            </Link>
+          </div>
+        </Card>
       </div>
     );
   }

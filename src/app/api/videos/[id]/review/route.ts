@@ -17,6 +17,20 @@ export async function GET(
     return NextResponse.json({ error: 'Video not in review state' }, { status: 400 });
   }
 
+  // Verify required files exist
+  const { fileExists } = await import('@/utils/fileStore');
+  const requiredFiles = ['scene_meta_aligned.json', 'scene_meta.json', 'captions.json'];
+
+  for (const filename of requiredFiles) {
+    const exists = await fileExists(id, filename);
+    if (!exists) {
+      return NextResponse.json(
+        { error: `Missing required file: ${filename}. Cannot load review data.` },
+        { status: 500 }
+      );
+    }
+  }
+
   // Load data files
   const alignedScenes = (await loadJson(id, 'scene_meta_aligned.json')) as any[];
   const sceneMeta = (await loadJson(id, 'scene_meta.json')) as any[];
@@ -33,8 +47,8 @@ export async function GET(
     return {
       sceneIndex: idx,
       text: scene.text,
-      audioPath: `/jobs/${id}/audio.wav`, // Single audio file for all scenes
-      imagePath: `/jobs/${id}/${imageFilename}`,
+      audioPath: `/api/jobs/${id}/files/audio.wav`, // Single audio file for all scenes
+      imagePath: `/api/jobs/${id}/files/${imageFilename}`,
       imagePrompt: sceneMeta[idx]?.nanoPrompt || '',
       startTime: scene.startTime,
       endTime: scene.endTime,

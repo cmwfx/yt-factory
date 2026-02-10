@@ -26,6 +26,8 @@
     "prisma": "^5.22.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "stream-chain": "^3.4.0",
+    "stream-json": "^1.9.1",
     "uuid": "^13.0.0",
     "zod": "^4.3.6"
   },
