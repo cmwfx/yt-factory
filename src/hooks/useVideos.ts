@@ -66,7 +66,7 @@ export interface UseVideosResult {
   deleteVideo: (id: string) => Promise<void>;
 }
 
-export function useVideos(statusFilter?: string): UseVideosResult {
+export function useVideos(statusFilter?: string, channelId?: string): UseVideosResult {
   const [videos, setVideos] = useState<VideoSummary[]>([]);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
@@ -81,6 +81,9 @@ export function useVideos(statusFilter?: string): UseVideosResult {
       const params = new URLSearchParams();
       if (statusFilter && statusFilter !== 'all') {
         params.set('status', statusFilter);
+      }
+      if (channelId) {
+        params.set('channelId', channelId);
       }
 
       const url = `/api/videos${params.toString() ? `?${params}` : ''}`;
@@ -99,7 +102,7 @@ export function useVideos(statusFilter?: string): UseVideosResult {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, channelId]);
 
   useEffect(() => {
     fetchVideos();

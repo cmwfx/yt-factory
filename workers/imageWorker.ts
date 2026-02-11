@@ -17,11 +17,13 @@ import {
   createBatchJob,
 } from '@/lib/db';
 import { ensureJobDir, listFiles, getFilePath } from '@/utils/fileStore';
-import type { Scene, CharacterType } from '@/types';
+import { getStyleReferenceBase64ForChannel } from '@/utils/fileStore';
+import type { Scene, CharacterType, ChannelConfig } from '@/types';
 
 export interface ImageWorkerInput {
   videoId: string;
   scenes: Scene[];
+  channelConfig?: ChannelConfig;
 }
 
 export interface ImageWorkerOutput {
@@ -38,7 +40,7 @@ export interface ImageWorkerOutput {
  * The batch poller will handle completion and Phase 2 submission.
  */
 export async function runImageWorker(input: ImageWorkerInput): Promise<ImageWorkerOutput> {
-  const { videoId, scenes } = input;
+  const { videoId, scenes, channelConfig } = input;
 
   // Check if already done
   const existingStep = await getStepByName(videoId, 'images');
@@ -85,8 +87,10 @@ export async function runImageWorker(input: ImageWorkerInput): Promise<ImageWork
     const plan = planBatches(scenes);
     console.log(`[imageWorker] Batch plan: Phase 1 = ${plan.phase1.length} scenes, Phase 2 = ${plan.phase2.length} scenes`);
 
-    // Get style reference
-    const styleRefBase64 = getStyleReferenceBase64();
+    // Get style reference (channel-specific or default)
+    const styleRefBase64 = channelConfig?.styleReferencePath
+      ? getStyleReferenceBase64ForChannel(channelConfig.styleReferencePath)
+      : getStyleReferenceBase64();
 
     // Build Phase 1 requests (no reference images needed)
     const emptyRefs = new Map<number, string>();
@@ -96,13 +100,15 @@ export async function runImageWorker(input: ImageWorkerInput): Promise<ImageWork
       plan.phase1,
       emptyRefs,
       emptyAnchors,
-      styleRefBase64
+      styleRefBase64,
+      channelConfig
     );
 
     // Submit Phase 1 batch
     const batchName = await submitBatch(
       phase1Requests,
-      `video-${videoId}-phase1`
+      `video-${videoId}-phase1`,
+      channelConfig
     );
 
     console.log(`[imageWorker] Phase 1 batch submitted: ${batchName}`);

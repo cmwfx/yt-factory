@@ -10,11 +10,12 @@ import {
 import { saveJson, loadJson } from '@/utils/fileStore';
 import { env } from '@/lib/env';
 import type { UsageMetadata } from '@/lib/costTracker';
-import type { Scene } from '@/types';
+import type { Scene, ChannelConfig } from '@/types';
 
 export interface SceneWorkerInput {
   videoId: string;
   script: string;
+  channelConfig?: ChannelConfig;
 }
 
 export interface SceneWorkerOutput {
@@ -28,7 +29,7 @@ export interface SceneWorkerOutput {
  * Break down a script into visual scenes.
  */
 export async function runSceneWorker(input: SceneWorkerInput): Promise<SceneWorkerOutput> {
-  const { videoId, script } = input;
+  const { videoId, script, channelConfig } = input;
 
   // Check if already done
   const existingStep = await getStepByName(videoId, 'scenes');
@@ -68,7 +69,7 @@ export async function runSceneWorker(input: SceneWorkerInput): Promise<SceneWork
     }
 
     // Generate scenes
-    const { scenes: rawScenes, usageMetadata } = await breakdownScript(script);
+    const { scenes: rawScenes, usageMetadata } = await breakdownScript(script, channelConfig);
     let scenes = rawScenes;
 
     console.log(`Generated ${scenes.length} scenes`);

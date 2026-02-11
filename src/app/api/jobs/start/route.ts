@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
       generateIdeas: body.generateIdeas ?? false,
       testMode: body.testMode ?? false,
       enableManualReview: body.enableManualReview ?? false,
+      channelId: body.channelId || undefined,
     };
 
     console.log('Starting job with options:', options);

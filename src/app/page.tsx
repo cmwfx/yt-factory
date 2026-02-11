@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button, Card, Badge, getStatusBadgeVariant } from '@/components/ui';
+import { useChannel } from '@/contexts/ChannelContext';
 
 interface HealthStatus {
   status: string;
@@ -50,6 +51,7 @@ const STAT_COLORS = [
 
 export default function Home() {
   const router = useRouter();
+  const { activeChannel } = useChannel();
   const [loading, setLoading] = useState(false);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [stats, setStats] = useState<QuickStats | null>(null);
@@ -73,9 +75,10 @@ export default function Home() {
 
   const fetchStats = useCallback(async () => {
     try {
+      const channelParam = activeChannel?.id ? `?channelId=${activeChannel.id}` : '';
       const [ideasRes, videosRes] = await Promise.all([
-        fetch('/api/ideas'),
-        fetch('/api/videos'),
+        fetch(`/api/ideas${channelParam}`),
+        fetch(`/api/videos${channelParam}`),
       ]);
       const ideasData = await ideasRes.json();
       const videosData = await videosRes.json();
@@ -90,7 +93,7 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to fetch stats:', error);
     }
-  }, []);
+  }, [activeChannel?.id]);
 
   const checkHealth = useCallback(async () => {
     try {
@@ -124,7 +127,7 @@ export default function Home() {
       const res = await fetch('/api/jobs/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ generateIdeas, testMode, enableManualReview }),
+        body: JSON.stringify({ generateIdeas, testMode, enableManualReview, channelId: activeChannel?.id }),
       });
       const data = await res.json();
       if (data.videoId) {
@@ -147,6 +150,7 @@ export default function Home() {
           intervalHours: newScheduleHours,
           generateIdeas: newScheduleGenIdeas,
           enableReview: newScheduleReview,
+          channelId: activeChannel?.id,
         }),
       });
       setShowScheduleForm(false);
@@ -227,7 +231,9 @@ export default function Home() {
           <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
             <div>
               <h1 className="text-3xl font-bold text-white">Video Factory</h1>
-              <p className="text-zinc-400 mt-1">Create AI-powered YouTube videos</p>
+              <p className="text-zinc-400 mt-1">
+                {activeChannel ? `Channel: ${activeChannel.name}` : 'Create AI-powered YouTube videos'}
+              </p>
             </div>
 
             <div className="flex items-center gap-4 flex-wrap">

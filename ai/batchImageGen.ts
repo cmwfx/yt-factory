@@ -8,7 +8,7 @@ import { createReadStream, createWriteStream } from 'fs';
 import { parser } from 'stream-json';
 import { pick } from 'stream-json/filters/Pick';
 import { streamArray } from 'stream-json/streamers/StreamArray';
-import type { Scene, CharacterType } from '@/types';
+import type { Scene, CharacterType, ChannelConfig } from '@/types';
 
 const client = new GoogleGenAI({ apiKey: env.GOOGLE_GENAI_API_KEY || '' });
 
@@ -61,8 +61,10 @@ export function buildBatchRequests(
   sceneIndices: number[],
   referenceImages: Map<number, string>,
   characterAnchorImages: Map<CharacterType, string>,
-  styleRefBase64: string
+  styleRefBase64: string,
+  channelConfig?: ChannelConfig
 ): BatchRequestItem[] {
+  const imageModelName = channelConfig?.imageGenModel || MODEL_NAME;
   const requests: BatchRequestItem[] = [];
 
   for (const idx of sceneIndices) {
@@ -73,7 +75,8 @@ export function buildBatchRequests(
       scene,
       styleRefBase64,
       refBase64,
-      characterAnchorImages
+      characterAnchorImages,
+      channelConfig
     );
 
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
@@ -85,7 +88,7 @@ export function buildBatchRequests(
     requests.push({
       key: `scene-${idx.toString().padStart(3, '0')}`,
       request: {
-        model: `models/${MODEL_NAME}`,
+        model: `models/${imageModelName}`,
         contents: [{ parts }],
         generationConfig: {
           responseModalities: ['TEXT', 'IMAGE'],
@@ -103,8 +106,10 @@ export function buildBatchRequests(
  */
 export async function submitBatch(
   requests: BatchRequestItem[],
-  displayName: string
+  displayName: string,
+  channelConfig?: ChannelConfig
 ): Promise<string> {
+  const imageModelName = channelConfig?.imageGenModel || MODEL_NAME;
   // Build inline requests — src accepts InlinedRequest[] directly
   const inlineRequests = requests.map(r => ({
     contents: r.request.contents.map(c => ({
@@ -115,7 +120,7 @@ export async function submitBatch(
   }));
 
   const response = await client.batches.create({
-    model: `models/${MODEL_NAME}`,
+    model: `models/${imageModelName}`,
     src: inlineRequests as any, // InlinedRequest[]
     config: {
       displayName,

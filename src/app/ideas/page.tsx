@@ -4,10 +4,12 @@ import { useState, useMemo } from 'react';
 import { Button, Input, Card, Badge } from '@/components/ui';
 import { IdeaList, IdeaForm } from '@/components/ideas';
 import { useIdeas, Idea } from '@/hooks/useIdeas';
+import { useChannel } from '@/contexts/ChannelContext';
 
 type FilterType = 'all' | 'unused' | 'used';
 
 export default function IdeasPage() {
+  const { activeChannel } = useChannel();
   const [filter, setFilter] = useState<FilterType>('all');
   const [search, setSearch] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -19,7 +21,8 @@ export default function IdeasPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const { ideas, total, unused, loading, error, refetch, createIdea, updateIdea, deleteIdea, deleteIdeas } = useIdeas(
-    filter === 'all' ? undefined : filter
+    filter === 'all' ? undefined : filter,
+    activeChannel?.id
   );
 
   const filteredIdeas = useMemo(() => {
@@ -95,7 +98,7 @@ export default function IdeasPage() {
       const res = await fetch('/api/ideas/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: 10 }),
+        body: JSON.stringify({ count: 10, channelId: activeChannel?.id }),
       });
 
       if (!res.ok) {

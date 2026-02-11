@@ -20,11 +20,12 @@ export function startScheduler() {
         try {
           console.log(`[scheduler] Running schedule ${schedule.id} (every ${schedule.intervalHours}h)`);
 
-          // Start pipeline in background
+          // Start pipeline in background (pass channelId if schedule has one)
           startPipeline({
             generateIdeas: schedule.generateIdeas,
             testMode: false,
             enableManualReview: schedule.enableReview,
+            channelId: (schedule as any).channelId || undefined,
           }).catch(err => {
             console.error(`[scheduler] Pipeline failed for schedule ${schedule.id}:`, err);
             sendTelegramMessage(`Scheduled pipeline failed: ${err.message}`);

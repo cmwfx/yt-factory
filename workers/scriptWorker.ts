@@ -11,11 +11,12 @@ import {
 } from '@/lib/db';
 import { saveText, fileExists } from '@/utils/fileStore';
 import type { UsageMetadata } from '@/lib/costTracker';
-import type { IdeaInput } from '@/types';
+import type { IdeaInput, ChannelConfig } from '@/types';
 
 export interface ScriptWorkerInput {
   videoId: string;
   idea: IdeaInput;
+  channelConfig?: ChannelConfig;
 }
 
 export interface ScriptWorkerOutput {
@@ -29,7 +30,7 @@ export interface ScriptWorkerOutput {
  * Generate a script for a video.
  */
 export async function runScriptWorker(input: ScriptWorkerInput): Promise<ScriptWorkerOutput> {
-  const { videoId, idea } = input;
+  const { videoId, idea, channelConfig } = input;
 
   // Check if already done
   const existingStep = await getStepByName(videoId, 'scripting');
@@ -59,7 +60,7 @@ export async function runScriptWorker(input: ScriptWorkerInput): Promise<ScriptW
     console.log(`Generating script for: ${idea.title}`);
 
     // Generate script
-    const result = await generateScript(idea);
+    const result = await generateScript(idea, channelConfig);
 
     console.log(`Script generated: ${result.wordCount} words`);
 

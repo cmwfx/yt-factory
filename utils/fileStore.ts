@@ -121,3 +121,8 @@ export function getStyleReferenceBase64(): string {
 export function getStyleReferencePath(): string {
   return env.STYLE_REFERENCE_PATH;
 }
+
+export function getStyleReferenceBase64ForChannel(styleReferencePath: string): string {
+  const buffer = fsSync.readFileSync(styleReferencePath);
+  return buffer.toString('base64');
+}

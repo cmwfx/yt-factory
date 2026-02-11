@@ -1,9 +1,10 @@
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { env } from '@/lib/env';
 import { CHANNEL_BRIEF, NANOBANANA_STYLE_INSTRUCTION } from '@/lib/channelBrief';
+import { buildPromptContext } from '@/lib/channelConfig';
 import { withRetry } from '@/utils/retry';
 import type { UsageMetadata } from '@/lib/costTracker';
-import type { Scene, VisualType, CharacterType } from '@/types';
+import type { Scene, VisualType, CharacterType, ChannelConfig } from '@/types';
 
 const genAI = new GoogleGenerativeAI(env.GOOGLE_GENAI_API_KEY || '');
 
@@ -76,14 +77,19 @@ const sceneSchema = {
   },
 };
 
-const SCENE_BREAKDOWN_PROMPT = `You are a visual director breaking down a script into scenes for an illustrated explainer video.
+function buildSceneBreakdownPrompt(channelConfig?: ChannelConfig): string {
+  const channelContext = channelConfig ? buildPromptContext(channelConfig) : CHANNEL_BRIEF.toPromptContext();
+  const styleInstruction = channelConfig?.styleInstruction || NANOBANANA_STYLE_INSTRUCTION;
+  const characterBible = channelConfig?.characterBible || CHARACTER_BIBLE;
 
-${CHANNEL_BRIEF.toPromptContext()}
+  return `You are a visual director breaking down a script into scenes for an illustrated explainer video.
+
+${channelContext}
 
 VISUAL STYLE:
-${NANOBANANA_STYLE_INSTRUCTION}
+${styleInstruction}
 
-${CHARACTER_BIBLE}
+${characterBible}
 
 For each scene, provide:
 1. sceneIndex: Sequential number starting from 0
@@ -116,6 +122,7 @@ NANOBANANA PROMPT GUIDELINES:
 - For OBJECT_FOCUS: describe what to zoom in on
 - Prioritize ACTION verbs: punching, falling, burning, exploding (not standing, looking, being)
 - Do NOT repeat style instructions in every prompt - they are applied automatically`;
+}
 
 // Maximum scenes per batch to avoid token limit issues
 const MAX_SCENES_PER_BATCH = 30;
@@ -162,9 +169,11 @@ function mergeTextSegments(segments: string[], minWords: number = MIN_WORDS_PER_
 async function processBatch(
   sceneParts: string[],
   startIndex: number,
-  model: ReturnType<typeof genAI.getGenerativeModel>
+  model: ReturnType<typeof genAI.getGenerativeModel>,
+  channelConfig?: ChannelConfig
 ): Promise<{ scenes: Scene[]; usageMetadata?: UsageMetadata }> {
-  const prompt = `${SCENE_BREAKDOWN_PROMPT}
+  const sceneBreakdownPrompt = buildSceneBreakdownPrompt(channelConfig);
+  const prompt = `${sceneBreakdownPrompt}
 
 Break down these ${sceneParts.length} script segments into visual scenes.
 IMPORTANT: Start sceneIndex at ${startIndex}.
@@ -200,9 +209,10 @@ Create a scene entry for each segment. The sceneIndex MUST match the segment num
  * Break down a script into visual scenes using structured output.
  * Processes in batches if there are many scenes to avoid token limits.
  */
-export async function breakdownScript(script: string): Promise<{ scenes: Scene[]; usageMetadata: UsageMetadata }> {
+export async function breakdownScript(script: string, channelConfig?: ChannelConfig): Promise<{ scenes: Scene[]; usageMetadata: UsageMetadata }> {
+  const modelName = channelConfig?.sceneBreakdownModel || 'gemini-2.0-flash';
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: modelName,
     generationConfig: {
       responseMimeType: 'application/json',
       responseSchema: sceneSchema,
@@ -235,7 +245,7 @@ export async function breakdownScript(script: string): Promise<{ scenes: Scene[]
 
     for (let i = 0; i < sceneParts.length; i += MAX_SCENES_PER_BATCH) {
       const batch = sceneParts.slice(i, i + MAX_SCENES_PER_BATCH);
-      const { scenes: batchScenes, usageMetadata } = await processBatch(batch, i, model);
+      const { scenes: batchScenes, usageMetadata } = await processBatch(batch, i, model, channelConfig);
       allScenes = allScenes.concat(batchScenes);
       if (usageMetadata) {
         accumulatedUsage.promptTokenCount! += usageMetadata.promptTokenCount || 0;
@@ -251,7 +261,7 @@ export async function breakdownScript(script: string): Promise<{ scenes: Scene[]
     }
   } else {
     // Single batch for smaller scripts
-    const { scenes, usageMetadata } = await processBatch(sceneParts, 0, model);
+    const { scenes, usageMetadata } = await processBatch(sceneParts, 0, model, channelConfig);
     allScenes = scenes;
     if (usageMetadata) {
       accumulatedUsage.promptTokenCount! += usageMetadata.promptTokenCount || 0;

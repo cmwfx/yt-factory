@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateNewIdeas } from '@/workers/pipeline';
 import { prisma } from '@/lib/db';
+import { resolveChannelConfig } from '@/lib/channelConfig';
 
 interface Idea {
   id: string;
@@ -14,13 +15,16 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const count = body.count ?? 10;
+    const channelId = body.channelId;
 
     console.log(`Generating ${count} new ideas...`);
 
-    const added = await generateNewIdeas();
+    const channelConfig = await resolveChannelConfig(channelId);
+    const added = await generateNewIdeas(channelConfig);
 
-    // Get all ideas for response
+    // Get all ideas for response (scoped to channel if provided)
     const allIdeas = await prisma.idea.findMany({
+      where: channelId ? { channelId } : undefined,
       orderBy: { createdAt: 'desc' },
       take: 20,
     });

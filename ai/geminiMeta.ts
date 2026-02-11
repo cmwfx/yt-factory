@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { env } from '@/lib/env';
 import { withRetry } from '@/utils/retry';
+import type { ChannelConfig } from '@/types';
 
 const genAI = new GoogleGenerativeAI(env.GOOGLE_GENAI_API_KEY || '');
 
@@ -8,8 +9,9 @@ const genAI = new GoogleGenerativeAI(env.GOOGLE_GENAI_API_KEY || '');
  * Generate 5 scroll-stopping clickbait titles from the idea title.
  * Each title uses a different proven CTR pattern.
  */
-export async function generateClickbaitTitles(ideaTitle: string): Promise<string[]> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-3-pro-preview' });
+export async function generateClickbaitTitles(ideaTitle: string, channelConfig?: ChannelConfig): Promise<string[]> {
+  const modelName = channelConfig?.metadataModel || 'gemini-3-pro-preview';
+  const model = genAI.getGenerativeModel({ model: modelName });
 
   const prompt = `You are a YouTube CTR expert. Generate exactly 5 scroll-stopping titles for a video about: "${ideaTitle}"
 
@@ -96,8 +98,9 @@ interface SeoResult {
 /**
  * Generate a hook-first, story-driven SEO description and keywords from the idea title.
  */
-export async function generateSeoDescription(ideaTitle: string): Promise<SeoResult> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-3-pro-preview' });
+export async function generateSeoDescription(ideaTitle: string, channelConfig?: ChannelConfig): Promise<SeoResult> {
+  const modelName = channelConfig?.metadataModel || 'gemini-3-pro-preview';
+  const model = genAI.getGenerativeModel({ model: modelName });
 
   const prompt = `You are a YouTube description writer. Write a hook-first, story-driven description for a video about: "${ideaTitle}"
 
@@ -177,8 +180,9 @@ Return ONLY the JSON object.`;
  * Generate 3 thumbnail image prompts in distinct visual styles from the idea title.
  * Each prompt is a self-contained NanoPrompt ready for Gemini image generation.
  */
-export async function generateThumbnailPrompts(ideaTitle: string): Promise<string[]> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-3-pro-preview' });
+export async function generateThumbnailPrompts(ideaTitle: string, channelConfig?: ChannelConfig): Promise<string[]> {
+  const modelName = channelConfig?.metadataModel || 'gemini-3-pro-preview';
+  const model = genAI.getGenerativeModel({ model: modelName });
 
   const prompt = `You are a YouTube thumbnail designer. Generate exactly 3 thumbnail image prompts for a video about: "${ideaTitle}"
 

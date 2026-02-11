@@ -4,10 +4,12 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Button, Card, Badge, getStatusBadgeVariant, ProgressBar } from '@/components/ui';
 import { useVideos, VideoSummary } from '@/hooks/useVideos';
+import { useChannel } from '@/contexts/ChannelContext';
 
 type FilterType = 'all' | 'done' | 'failed' | 'in_progress';
 
 export default function HistoryPage() {
+  const { activeChannel } = useChannel();
   const [filter, setFilter] = useState<FilterType>('all');
   const [deleteConfirm, setDeleteConfirm] = useState<VideoSummary | null>(null);
 
@@ -18,7 +20,8 @@ export default function HistoryPage() {
   };
 
   const { videos, statusCounts, total, loading, error, refetch, deleteVideo } = useVideos(
-    getStatusFilter()
+    getStatusFilter(),
+    activeChannel?.id
   );
 
   const filteredVideos = filter === 'in_progress'

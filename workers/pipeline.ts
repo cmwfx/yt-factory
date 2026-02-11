@@ -24,7 +24,8 @@ import { runAudioWorker } from './audioWorker';
 import { runTranscribeWorker } from './transcribeWorker';
 import { runAlignWorker } from './alignWorker';
 import { runRenderWorker } from './renderWorker';
-import type { JobOptions, StepName } from '@/types';
+import { resolveChannelConfig } from '@/lib/channelConfig';
+import type { JobOptions, StepName, ChannelConfig } from '@/types';
 
 export interface PipelineResult {
   videoId: string;
@@ -41,27 +42,32 @@ export interface PipelineResult {
  * Returns with status 'waiting_batch' — the batch poller will call continuePipeline.
  */
 export async function startPipeline(options: JobOptions): Promise<PipelineResult> {
-  const { generateIdeas: shouldGenerateIdeas, testMode, enableManualReview } = options;
+  const { generateIdeas: shouldGenerateIdeas, testMode, enableManualReview, channelId } = options;
 
   console.log('='.repeat(60));
   console.log('AI YouTube Video Factory - Pipeline Started');
   console.log('='.repeat(60));
   console.log(`Generate Ideas: ${shouldGenerateIdeas}`);
   console.log(`Test Mode: ${testMode || env.TEST_MODE}`);
+  console.log(`Channel ID: ${channelId || 'default'}`);
   console.log('='.repeat(60));
 
   const costTracker = new CostAccumulator();
 
   try {
+    // Load channel config
+    const channelConfig = await resolveChannelConfig(channelId);
+    console.log(`Channel: ${channelConfig.name} (${channelConfig.slug})`);
+
     // Step 1: Generate ideas if requested
     if (shouldGenerateIdeas) {
       console.log('\n[1/8] Generating new ideas...');
-      await generateNewIdeas();
+      await generateNewIdeas(channelConfig);
     }
 
     // Step 2: Pick an idea
     console.log('\n[2/8] Picking an idea...');
-    const idea = await getUnusedIdea();
+    const idea = await getUnusedIdea(channelConfig.id);
     if (!idea) {
       throw new Error('No unused ideas available. Generate ideas first.');
     }
@@ -69,7 +75,7 @@ export async function startPipeline(options: JobOptions): Promise<PipelineResult
     console.log(`Selected idea: ${idea.title}`);
     await markIdeaUsed(idea.id);
 
-    const video = await createVideo(idea.id, idea.title);
+    const video = await createVideo(idea.id, idea.title, channelConfig.id);
     const videoId = video.id;
     console.log(`Video ID: ${videoId}`);
 
@@ -78,6 +84,7 @@ export async function startPipeline(options: JobOptions): Promise<PipelineResult
     await saveJson(videoId, 'pipeline_options.json', {
       enableManualReview,
       testMode,
+      channelId: channelConfig.id,
     });
 
     // Step 3: Generate script
@@ -85,6 +92,7 @@ export async function startPipeline(options: JobOptions): Promise<PipelineResult
     const scriptResult = await runScriptWorker({
       videoId,
       idea: { title: idea.title, description: idea.description },
+      channelConfig,
     });
     console.log(`Script: ${scriptResult.wordCount} words`);
     if (scriptResult.usageMetadata) {
@@ -96,6 +104,7 @@ export async function startPipeline(options: JobOptions): Promise<PipelineResult
     const sceneResult = await runSceneWorker({
       videoId,
       script: scriptResult.script,
+      channelConfig,
     });
     console.log(`Scenes: ${sceneResult.sceneCount}`);
     if (sceneResult.usageMetadata) {
@@ -111,6 +120,7 @@ export async function startPipeline(options: JobOptions): Promise<PipelineResult
     const imageResult = await runImageWorker({
       videoId,
       scenes: sceneResult.scenes,
+      channelConfig,
     });
 
     if (imageResult.status === 'waiting_batch') {
@@ -124,7 +134,7 @@ export async function startPipeline(options: JobOptions): Promise<PipelineResult
     }
 
     // If images were already complete (cache hit), continue synchronously
-    return await runPostImageSteps(videoId, costTracker, enableManualReview);
+    return await runPostImageSteps(videoId, costTracker, enableManualReview, channelConfig);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('\nPipeline failed:', errorMessage);
@@ -149,11 +159,14 @@ export async function continuePipeline(videoId: string): Promise<PipelineResult>
   try {
     // Load pipeline options
     const { loadJson } = await import('@/utils/fileStore');
-    const options = await loadJson<{ enableManualReview: boolean; testMode: boolean }>(
+    const options = await loadJson<{ enableManualReview: boolean; testMode: boolean; channelId?: string }>(
       videoId,
       'pipeline_options.json'
     );
     const enableManualReview = options?.enableManualReview ?? false;
+
+    // Load channel config from saved options or video record
+    const channelConfig = await resolveChannelConfig(options?.channelId);
 
     // Load partial cost tracking
     const partialCost = await loadJson<any>(videoId, 'cost_partial.json');
@@ -163,7 +176,7 @@ export async function continuePipeline(videoId: string): Promise<PipelineResult>
       costTracker.addGeminiText({ promptTokenCount: 0, candidatesTokenCount: 0 }); // placeholder to get totals
     }
 
-    return await runPostImageSteps(videoId, costTracker, enableManualReview);
+    return await runPostImageSteps(videoId, costTracker, enableManualReview, channelConfig);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`Pipeline continuation failed for ${videoId}:`, errorMessage);
@@ -183,7 +196,8 @@ export async function continuePipeline(videoId: string): Promise<PipelineResult>
 async function runPostImageSteps(
   videoId: string,
   costTracker: CostAccumulator,
-  enableManualReview: boolean
+  enableManualReview: boolean,
+  channelConfig?: ChannelConfig
 ): Promise<PipelineResult> {
   const { loadJson, loadText, saveJson } = await import('@/utils/fileStore');
   const { listFiles, getFilePath } = await import('@/utils/fileStore');
@@ -204,6 +218,7 @@ async function runPostImageSteps(
     videoId,
     script,
     scenes,
+    channelConfig,
   });
   console.log(`Audio: ${audioResult.duration.toFixed(2)}s`);
   if (audioResult.usageMetadata) {
@@ -319,6 +334,11 @@ export async function resumePipeline(
       throw new Error(`Video not found: ${videoId}`);
     }
 
+    // Load channel config from video or saved options
+    const { loadJson: loadJsonEarly } = await import('@/utils/fileStore');
+    const savedOptions = await loadJsonEarly<{ channelId?: string }>(videoId, 'pipeline_options.json');
+    const channelConfig = await resolveChannelConfig(savedOptions?.channelId || (video as any).channelId);
+
     const stepOrder: StepName[] = [
       'scripting',
       'scenes',
@@ -358,17 +378,18 @@ export async function resumePipeline(
               title: video.title,
               description: video.idea?.description || '',
             },
+            channelConfig,
           });
           script = result.script;
           break;
         }
         case 'scenes': {
-          const result = await runSceneWorker({ videoId, script });
+          const result = await runSceneWorker({ videoId, script, channelConfig });
           scenes = result.scenes;
           break;
         }
         case 'images': {
-          const result = await runImageWorker({ videoId, scenes });
+          const result = await runImageWorker({ videoId, scenes, channelConfig });
           if (result.status === 'waiting_batch') {
             return {
               videoId,
@@ -380,7 +401,7 @@ export async function resumePipeline(
           break;
         }
         case 'audio': {
-          const result = await runAudioWorker({ videoId, script, scenes });
+          const result = await runAudioWorker({ videoId, script, scenes, channelConfig });
           audioPath = result.audioPath;
           sceneDurations = result.sceneDurations;
           sceneAudioPaths = result.sceneAudioPaths;
@@ -453,17 +474,18 @@ export async function resumePipeline(
   }
 }
 
-async function generateNewIdeas(): Promise<number> {
-  const existingTitles = await getAllIdeaTitles();
+async function generateNewIdeas(channelConfig?: ChannelConfig): Promise<number> {
+  const channelId = channelConfig?.id;
+  const existingTitles = await getAllIdeaTitles(channelId);
   console.log(`Existing ideas: ${existingTitles.length}`);
 
-  const newIdeas = await generateIdeas(existingTitles, 10);
+  const newIdeas = await generateIdeas(existingTitles, 10, channelConfig);
   console.log(`Generated ${newIdeas.length} new ideas`);
 
   let added = 0;
   for (const idea of newIdeas) {
     try {
-      await createIdea(idea.title, idea.description);
+      await createIdea(idea.title, idea.description, channelId);
       added++;
       console.log(`  + ${idea.title}`);
     } catch (error) {

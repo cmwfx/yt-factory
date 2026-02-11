@@ -38,6 +38,57 @@ export interface JobOptions {
   generateIdeas: boolean;
   testMode: boolean;
   enableManualReview: boolean;
+  channelId?: string;
+}
+
+export interface ChannelConfig {
+  id: string;
+  name: string;
+  slug: string;
+  isDefault: boolean;
+
+  // Identity
+  channelTheme: string;
+  toneArray: string[];
+  nicheConstraints: string;
+
+  // Format
+  aspectRatio: string;
+  targetDuration: string;
+  targetWordCount: number;
+  pacing: string;
+
+  // Script Generation
+  personaPrompt: string;
+  scriptSections: Array<{
+    type: string;
+    title: string;
+    targetWordRange: [number, number];
+    percentageOfTotal: number;
+    purpose: string;
+  }>;
+  sectionConfigs: SectionPromptConfig[];
+  ideaGenerationPrompt: string | null;
+  metadataPersona: string;
+
+  // Visual Style
+  visualStyleDescription: string;
+  styleInstruction: string;
+  styleReferencePath: string;
+  characterBible: string;
+  characterDisplayNames: Record<string, string>;
+  thumbnailStylePrompt: string;
+
+  // Voice / TTS
+  ttsVoiceName: string;
+  ttsSpeakingStyle: string | null;
+
+  // AI Models
+  textGenModel: string;
+  sceneBreakdownModel: string;
+  imageGenModel: string;
+  ttsModel: string;
+  metadataModel: string;
 }
 
 export interface IdeaInput {

@@ -7,13 +7,66 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Channel {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  slug      String   @unique
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Identity
+  channelTheme     String
+  toneArray        String[]
+  nicheConstraints String
+
+  // Format
+  aspectRatio     String @default("16:9")
+  targetDuration  String @default("~10 minutes")
+  targetWordCount Int    @default(1700)
+  pacing          String @default("Fast pacing with frequent visual changes (every ~2-5s)")
+
+  // Script Generation
+  personaPrompt        String
+  scriptSections       Json   // Array of {type, title, targetWordRange, percentageOfTotal, purpose}
+  sectionConfigs       Json   // Array of {type, title, targetWordRange, instructions, endingGuidance}
+  ideaGenerationPrompt String?
+  metadataPersona      String
+
+  // Visual Style
+  visualStyleDescription String
+  styleInstruction       String
+  styleReferencePath     String
+  characterBible         String
+  characterDisplayNames  Json   // {"THE_VICTIM": "the ordinary person", ...}
+  thumbnailStylePrompt   String
+
+  // Voice / TTS
+  ttsVoiceName    String  @default("Algenib")
+  ttsSpeakingStyle String?
+
+  // AI Models
+  textGenModel        String @default("gemini-3-pro-preview")
+  sceneBreakdownModel String @default("gemini-2.0-flash")
+  imageGenModel       String @default("gemini-3-pro-image-preview")
+  ttsModel            String @default("gemini-2.5-pro-preview-tts")
+  metadataModel       String @default("gemini-3-pro-preview")
+
+  // Relations
+  videos    Video[]
+  ideas     Idea[]
+  schedules Schedule[]
+}
+
 model Idea {
   id          String   @id @default(uuid())
   title       String   @unique
   description String
   used        Boolean  @default(false)
   createdAt   DateTime @default(now())
+  channelId   String?
   videos      Video[]
+  channel     Channel? @relation(fields: [channelId], references: [id])
 }
 
 model User {
@@ -27,6 +80,7 @@ model User {
 model Video {
   id               String      @id @default(uuid())
   ideaId           String?
+  channelId        String?
   title            String
   status           VideoStatus @default(queued)
   script           String?
@@ -43,6 +97,7 @@ model Video {
   batchJobs        BatchJob[]
   steps            Step[]
   idea             Idea?       @relation(fields: [ideaId], references: [id])
+  channel          Channel?    @relation(fields: [channelId], references: [id])
 }
 
 model BatchJob {
@@ -60,6 +115,7 @@ model BatchJob {
 
 model Schedule {
   id            String    @id @default(uuid())
+  channelId     String?
   intervalHours Int
   enabled       Boolean   @default(true)
   generateIdeas Boolean   @default(true)
@@ -68,6 +124,7 @@ model Schedule {
   nextRunAt     DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  channel       Channel?  @relation(fields: [channelId], references: [id])
 }
 
 model RenderLock {

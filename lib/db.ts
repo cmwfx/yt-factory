@@ -3,20 +3,81 @@ import type { VideoStatus, StepName, StepStatus, AssetType } from '@prisma/clien
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-export async function createIdea(title: string, description: string) {
+// ── Channel CRUD ──
+
+export async function createChannel(data: {
+  name: string;
+  slug: string;
+  isDefault?: boolean;
+  channelTheme: string;
+  toneArray: string[];
+  nicheConstraints: string;
+  aspectRatio?: string;
+  targetDuration?: string;
+  targetWordCount?: number;
+  pacing?: string;
+  personaPrompt: string;
+  scriptSections: any;
+  sectionConfigs: any;
+  ideaGenerationPrompt?: string | null;
+  metadataPersona: string;
+  visualStyleDescription: string;
+  styleInstruction: string;
+  styleReferencePath: string;
+  characterBible: string;
+  characterDisplayNames: any;
+  thumbnailStylePrompt: string;
+  ttsVoiceName?: string;
+  ttsSpeakingStyle?: string | null;
+  textGenModel?: string;
+  sceneBreakdownModel?: string;
+  imageGenModel?: string;
+  ttsModel?: string;
+  metadataModel?: string;
+}) {
+  return prisma.channel.create({ data });
+}
+
+export async function getChannel(id: string) {
+  return prisma.channel.findUnique({ where: { id } });
+}
+
+export async function getDefaultChannel() {
+  return prisma.channel.findFirst({ where: { isDefault: true } });
+}
+
+export async function getAllChannels() {
+  return prisma.channel.findMany({ orderBy: { createdAt: 'asc' } });
+}
+
+export async function updateChannel(id: string, data: Record<string, any>) {
+  return prisma.channel.update({ where: { id }, data });
+}
+
+export async function deleteChannel(id: string) {
+  return prisma.channel.delete({ where: { id } });
+}
+
+// ── Idea CRUD ──
+
+export async function createIdea(title: string, description: string, channelId?: string | null) {
   return prisma.idea.create({
-    data: { title, description },
+    data: { title, description, channelId: channelId ?? undefined },
   });
 }
 
 export interface IdeasFilter {
   used?: boolean;
+  channelId?: string;
 }
 
 export async function getAllIdeas(filters?: IdeasFilter) {
-  const where: { used?: boolean } = {};
+  const where: { used?: boolean; channelId?: string } = {};
   if (filters?.used !== undefined) {
     where.used = filters.used;
+  }
+  if (filters?.channelId) {
+    where.channelId = filters.channelId;
   }
 
   return prisma.idea.findMany({
@@ -67,9 +128,11 @@ export async function deleteIdeas(ids: string[]) {
   return result.count;
 }
 
-export async function getUnusedIdea() {
+export async function getUnusedIdea(channelId?: string) {
+  const where: { used: boolean; channelId?: string } = { used: false };
+  if (channelId) where.channelId = channelId;
   return prisma.idea.findFirst({
-    where: { used: false },
+    where,
     orderBy: { createdAt: 'asc' },
   });
 }
@@ -81,16 +144,19 @@ export async function markIdeaUsed(ideaId: string) {
   });
 }
 
-export async function getAllIdeaTitles() {
+export async function getAllIdeaTitles(channelId?: string) {
+  const where: { channelId?: string } = {};
+  if (channelId) where.channelId = channelId;
   const ideas = await prisma.idea.findMany({
+    where,
     select: { title: true },
   });
   return ideas.map((i: { title: string }) => i.title);
 }
 
-export async function createVideo(ideaId: string | null, title: string) {
+export async function createVideo(ideaId: string | null, title: string, channelId?: string | null) {
   return prisma.video.create({
-    data: { ideaId, title },
+    data: { ideaId, title, channelId: channelId ?? undefined },
   });
 }
 
@@ -235,12 +301,16 @@ export async function resetStepsFromStep(videoId: string, fromStep: StepName) {
 
 export interface VideosFilter {
   status?: VideoStatus;
+  channelId?: string;
 }
 
 export async function getAllVideos(filters?: VideosFilter) {
-  const where: { status?: VideoStatus } = {};
+  const where: { status?: VideoStatus; channelId?: string } = {};
   if (filters?.status) {
     where.status = filters.status;
+  }
+  if (filters?.channelId) {
+    where.channelId = filters.channelId;
   }
 
   return prisma.video.findMany({
@@ -397,6 +467,7 @@ export async function createSchedule(data: {
   enabled?: boolean;
   generateIdeas?: boolean;
   enableReview?: boolean;
+  channelId?: string | null;
 }) {
   const now = new Date();
   const nextRunAt = new Date(now.getTime() + data.intervalHours * 60 * 60 * 1000);
@@ -406,6 +477,7 @@ export async function createSchedule(data: {
       enabled: data.enabled ?? true,
       generateIdeas: data.generateIdeas ?? true,
       enableReview: data.enableReview ?? false,
+      channelId: data.channelId ?? undefined,
       nextRunAt,
     },
   });
@@ -427,8 +499,10 @@ export async function deleteSchedule(id: string) {
   return prisma.schedule.delete({ where: { id } });
 }
 
-export async function getAllSchedules() {
-  return prisma.schedule.findMany({ orderBy: { createdAt: 'desc' } });
+export async function getAllSchedules(channelId?: string) {
+  const where: { channelId?: string } = {};
+  if (channelId) where.channelId = channelId;
+  return prisma.schedule.findMany({ where, orderBy: { createdAt: 'desc' } });
 }
 
 export async function getDueSchedules() {
@@ -437,6 +511,7 @@ export async function getDueSchedules() {
       enabled: true,
       nextRunAt: { lte: new Date() },
     },
+    include: { channel: true },
   });
 }
 

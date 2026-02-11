@@ -22,9 +22,10 @@ import {
 } from '@/ai/batchImageGen';
 import { generateSceneImage, setCharacterFirstAppearance, resetCharacterMemory } from '@/ai/nanoBanana';
 import { getCharacterAnchors } from '@/utils/batchPlanner';
-import { loadJson, saveJson, ensureJobDir, getFilePath, listFiles } from '@/utils/fileStore';
+import { loadJson, saveJson, ensureJobDir, getFilePath, listFiles, getStyleReferenceBase64ForChannel } from '@/utils/fileStore';
 import { sendTelegramMessage } from '@/lib/telegram';
-import type { Scene, CharacterType } from '@/types';
+import { resolveChannelConfig } from '@/lib/channelConfig';
+import type { Scene, CharacterType, ChannelConfig } from '@/types';
 
 let pollerInterval: ReturnType<typeof setInterval> | null = null;
 // Track jobs currently being processed to prevent duplicate work across poll cycles
@@ -143,7 +144,10 @@ async function handleBatchSuccess(job: {
   const failedIndices = sceneIndices.filter(idx => !savedImages.has(idx));
   if (failedIndices.length > 0) {
     console.log(`[batchPoller] ${failedIndices.length} scenes failed in batch, retrying individually: ${failedIndices.join(', ')}`);
-    const retried = await retryFailedScenes(job.videoId, failedIndices, jobDir);
+    // Load channel config for retry
+    const retryVideo = await getVideo(job.videoId);
+    const retryChannelConfig = await resolveChannelConfig((retryVideo as any)?.channelId);
+    const retried = await retryFailedScenes(job.videoId, failedIndices, jobDir, retryChannelConfig);
     for (const [idx, filePath] of retried) {
       savedImages.set(idx, filePath);
     }
@@ -215,6 +219,10 @@ async function submitPhase2(videoId: string) {
     return;
   }
 
+  // Load channel config from video record
+  const video = await getVideo(videoId);
+  const channelConfig = await resolveChannelConfig((video as any)?.channelId);
+
   const phase2References = new Map<number, number>(plan.phase2References);
 
   // Build reference images map from Phase 1 results
@@ -242,7 +250,10 @@ async function submitPhase2(videoId: string) {
     }
   }
 
-  const styleRefBase64 = getStyleReferenceBase64();
+  // Get style reference (channel-specific or default)
+  const styleRefBase64 = channelConfig?.styleReferencePath
+    ? getStyleReferenceBase64ForChannel(channelConfig.styleReferencePath)
+    : getStyleReferenceBase64();
 
   // Build and submit Phase 2
   const phase2Requests = buildBatchRequests(
@@ -250,10 +261,11 @@ async function submitPhase2(videoId: string) {
     plan.phase2,
     referenceImages,
     anchorImages,
-    styleRefBase64
+    styleRefBase64,
+    channelConfig
   );
 
-  const batchName = await submitBatch(phase2Requests, `video-${videoId}-phase2`);
+  const batchName = await submitBatch(phase2Requests, `video-${videoId}-phase2`, channelConfig);
   console.log(`[batchPoller] Phase 2 batch submitted: ${batchName}`);
 
   await createBatchJob({
@@ -294,7 +306,8 @@ async function handleAllImagesReady(videoId: string) {
 async function retryFailedScenes(
   videoId: string,
   failedIndices: number[],
-  jobDir: string
+  jobDir: string,
+  channelConfig?: ChannelConfig
 ): Promise<Map<number, string>> {
   const results = new Map<number, string>();
 
@@ -338,7 +351,7 @@ async function retryFailedScenes(
 
     try {
       console.log(`[batchPoller] Retrying scene ${idx} individually...`);
-      await generateSceneImage(scene, previousImagePath, outputPath);
+      await generateSceneImage(scene, previousImagePath, outputPath, channelConfig);
       results.set(idx, outputPath);
       console.log(`[batchPoller] Scene ${idx} retry succeeded`);
     } catch (err) {

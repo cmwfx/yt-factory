@@ -19,9 +19,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const statusParam = searchParams.get('status');
 
-    const filters: { status?: VideoStatus } = {};
+    const channelId = searchParams.get('channelId');
+
+    const filters: { status?: VideoStatus; channelId?: string } = {};
     if (statusParam && validStatuses.includes(statusParam as VideoStatus)) {
       filters.status = statusParam as VideoStatus;
+    }
+    if (channelId) {
+      filters.channelId = channelId;
     }
 
     const videos = await getAllVideos(filters);

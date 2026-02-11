@@ -1,10 +1,11 @@
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { env } from '@/lib/env';
 import { CHANNEL_BRIEF, SCRIPT_STRUCTURE } from '@/lib/channelBrief';
+import { buildPromptContext } from '@/lib/channelConfig';
 import { withRetry, sleep } from '@/utils/retry';
 import { generateThumbnailImage } from './nanoBanana';
 import type { UsageMetadata } from '@/lib/costTracker';
-import type { IdeaInput, ScriptResult, ToneAngleBrief, ScriptSection, ScriptSectionType, VideoMetadata } from '@/types';
+import type { IdeaInput, ScriptResult, ToneAngleBrief, ScriptSection, ScriptSectionType, SectionPromptConfig, VideoMetadata, ChannelConfig } from '@/types';
 
 const genAI = new GoogleGenerativeAI(env.GOOGLE_GENAI_API_KEY || '');
 
@@ -180,8 +181,9 @@ RETENTION TECHNIQUE: Emotional payoff + quotable closer. Viewers who stay to the
 /**
  * Generate the Tone & Angle Brief - the retention-optimized creative foundation for the script.
  */
-async function generateToneAngleBrief(idea: IdeaInput): Promise<{ brief: ToneAngleBrief; usageMetadata?: UsageMetadata }> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-3-pro-preview' });
+async function generateToneAngleBrief(idea: IdeaInput, channelConfig?: ChannelConfig): Promise<{ brief: ToneAngleBrief; usageMetadata?: UsageMetadata }> {
+  const modelName = channelConfig?.textGenModel || 'gemini-3-pro-preview';
+  const model = genAI.getGenerativeModel({ model: modelName });
 
   const prompt = `Analyze this video topic and create a retention-optimized creative brief for an exposé-style script.
 
@@ -252,15 +254,19 @@ async function generateSection(
   idea: IdeaInput,
   brief: ToneAngleBrief,
   config: SectionConfig,
-  previousSections: ScriptSection[]
+  previousSections: ScriptSection[],
+  channelConfig?: ChannelConfig
 ): Promise<{ section: ScriptSection; usageMetadata?: UsageMetadata }> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-3-pro-preview' });
+  const modelName = channelConfig?.textGenModel || 'gemini-3-pro-preview';
+  const model = genAI.getGenerativeModel({ model: modelName });
+
+  const personaPrompt = channelConfig?.personaPrompt || PERSONA_PROMPT;
 
   const previousContext = previousSections.length > 0
     ? `\n\nPREVIOUS SECTIONS (for continuity):\n${previousSections.map(s => `[${s.title}]\n${s.content}`).join('\n\n')}`
     : '';
 
-  const prompt = `${PERSONA_PROMPT}
+  const prompt = `${personaPrompt}
 
 TOPIC: ${idea.title}
 DESCRIPTION: ${idea.description}
@@ -376,14 +382,14 @@ CRITICAL RULES:
 /**
  * Generate a video script from an idea using section-chained approach.
  */
-export async function generateScript(idea: IdeaInput): Promise<ScriptResult & { usageMetadata: UsageMetadata }> {
+export async function generateScript(idea: IdeaInput, channelConfig?: ChannelConfig): Promise<ScriptResult & { usageMetadata: UsageMetadata }> {
   console.log('[DEBUG] Starting section-chained script generation for:', idea.title);
 
   // Accumulate usage metadata across all text generation calls
   const accumulatedUsage: UsageMetadata = { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0, thoughtsTokenCount: 0 };
 
   // Step 1: Generate Tone & Angle Brief
-  const { brief, usageMetadata: briefUsage } = await generateToneAngleBrief(idea);
+  const { brief, usageMetadata: briefUsage } = await generateToneAngleBrief(idea, channelConfig);
   if (briefUsage) {
     accumulatedUsage.promptTokenCount! += briefUsage.promptTokenCount || 0;
     accumulatedUsage.candidatesTokenCount! += briefUsage.candidatesTokenCount || 0;
@@ -393,10 +399,11 @@ export async function generateScript(idea: IdeaInput): Promise<ScriptResult & { 
 
   // Step 2: Generate each section in sequence
   const sections: ScriptSection[] = [];
+  const sectionConfigs: SectionConfig[] = channelConfig?.sectionConfigs || SECTION_CONFIGS;
 
-  for (const config of SECTION_CONFIGS) {
+  for (const config of sectionConfigs) {
     console.log(`[DEBUG] Generating section: ${config.title}`);
-    const { section, usageMetadata: sectionUsage } = await generateSection(idea, brief, config, sections);
+    const { section, usageMetadata: sectionUsage } = await generateSection(idea, brief, config, sections, channelConfig);
     sections.push(section);
     if (sectionUsage) {
       accumulatedUsage.promptTokenCount! += sectionUsage.promptTokenCount || 0;
@@ -430,17 +437,21 @@ export async function generateScript(idea: IdeaInput): Promise<ScriptResult & { 
  */
 export async function generateIdeas(
   existingTitles: string[],
-  count: number = 10
+  count: number = 10,
+  channelConfig?: ChannelConfig
 ): Promise<IdeaInput[]> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-3-pro-preview' });
+  const modelName = channelConfig?.textGenModel || 'gemini-3-pro-preview';
+  const model = genAI.getGenerativeModel({ model: modelName });
 
   const existingList = existingTitles.length > 0
     ? `\n\nEXISTING IDEAS (do not repeat these):\n${existingTitles.map(t => `- ${t}`).join('\n')}`
     : '';
 
-  const prompt = `Generate ${count} unique video ideas for an exposé-style YouTube channel.
+  const channelContext = channelConfig ? buildPromptContext(channelConfig) : CHANNEL_BRIEF.toPromptContext();
 
-${CHANNEL_BRIEF.toPromptContext()}
+  const prompt = `Generate ${count} unique video ideas for a YouTube channel.
+
+${channelContext}
 
 IDEA REQUIREMENTS:
 - The viewer must be PERSONALLY affected by the topic (job market, subscriptions, housing, healthcare, banking, education, food, tech platforms)
@@ -570,9 +581,10 @@ const metadataSchema = {
  * Generate high-CTR video metadata (titles, description, thumbnail prompts) from a script.
  * Uses psychological CTR techniques like curiosity gaps and negativity bias.
  */
-export async function generateMetadata(script: string): Promise<VideoMetadata> {
+export async function generateMetadata(script: string, channelConfig?: ChannelConfig): Promise<VideoMetadata> {
+  const modelName = channelConfig?.metadataModel || 'gemini-3-pro-preview';
   const model = genAI.getGenerativeModel({
-    model: 'gemini-3-pro-preview',
+    model: modelName,
     generationConfig: {
       responseMimeType: 'application/json',
       responseSchema: metadataSchema,
@@ -580,7 +592,9 @@ export async function generateMetadata(script: string): Promise<VideoMetadata> {
     },
   });
 
-  const prompt = `${METADATA_PROMPT}
+  const metaPersona = channelConfig?.metadataPersona || METADATA_PROMPT;
+
+  const prompt = `${metaPersona}
 
 Analyze this script and generate:
 1. Exactly 5 high-CTR titles (each under 50 characters)

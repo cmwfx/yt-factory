@@ -50,3 +50,7 @@ prisma/*.db-journal
 # video factory output
 /public/jobs/*
 !/public/jobs/.gitkeep
+
+# SSH keys
+YT_Factory
+YT_Factory.pub

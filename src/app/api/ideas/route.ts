@@ -6,11 +6,16 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const usedParam = searchParams.get('used');
 
-    const filters: { used?: boolean } = {};
+    const channelId = searchParams.get('channelId');
+
+    const filters: { used?: boolean; channelId?: string } = {};
     if (usedParam === 'true') {
       filters.used = true;
     } else if (usedParam === 'false') {
       filters.used = false;
+    }
+    if (channelId) {
+      filters.channelId = channelId;
     }
 
     const ideas = await getAllIdeas(filters);
@@ -41,7 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const idea = await createIdea(body.title, body.description);
+    const idea = await createIdea(body.title, body.description, body.channelId);
 
     return NextResponse.json({
       success: true,

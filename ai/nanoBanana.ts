@@ -3,19 +3,20 @@ import { GoogleGenAI } from '@google/genai';
 import { env } from '@/lib/env';
 import { NANOBANANA_STYLE_INSTRUCTION } from '@/lib/channelBrief';
 import { withRetry } from '@/utils/retry';
-import { getStyleReferenceBase64 } from '@/utils/fileStore';
+import { getStyleReferenceBase64, getStyleReferenceBase64ForChannel } from '@/utils/fileStore';
 import fs from 'fs/promises';
-import type { Scene, CharacterType } from '@/types';
+import type { Scene, CharacterType, ChannelConfig } from '@/types';
 
-const CHARACTER_DISPLAY_NAMES: Record<string, string> = {
+const DEFAULT_CHARACTER_DISPLAY_NAMES: Record<string, string> = {
   THE_VICTIM: 'the ordinary person',
   THE_SUIT: 'the man in the suit',
   THE_SYSTEM: 'the abstract system',
 };
 
-function sanitizeCharacterNames(prompt: string): string {
+function sanitizeCharacterNames(prompt: string, displayNames?: Record<string, string>): string {
+  const names = displayNames || DEFAULT_CHARACTER_DISPLAY_NAMES;
   let result = prompt;
-  for (const [token, label] of Object.entries(CHARACTER_DISPLAY_NAMES)) {
+  for (const [token, label] of Object.entries(names)) {
     result = result.replace(new RegExp(token, 'gi'), label);
   }
   return result;
@@ -66,13 +67,14 @@ async function readImageAsBase64(imagePath: string): Promise<string> {
 /**
  * Build character reference prompt for scenes with recurring characters.
  */
-function buildCharacterReferencePrompt(characters: CharacterType[], startRefIndex: number): string {
+function buildCharacterReferencePrompt(characters: CharacterType[], startRefIndex: number, displayNames?: Record<string, string>): string {
+  const names = displayNames || DEFAULT_CHARACTER_DISPLAY_NAMES;
   const lines: string[] = [];
   let refIndex = startRefIndex;
 
   for (const char of characters) {
     if (characterFirstAppearance.has(char)) {
-      const displayName = CHARACTER_DISPLAY_NAMES[char] || char;
+      const displayName = names[char] || char;
       lines.push(`Reference ${refIndex} shows the EXACT character model for ${displayName}. This character MUST look identical to Reference ${refIndex} in this scene.`);
       refIndex++;
     }
@@ -145,11 +147,13 @@ Requirements:
 export async function generateSceneImage(
   scene: Scene,
   previousImagePath: string | null,
-  outputPath: string
+  outputPath: string,
+  channelConfig?: ChannelConfig
 ): Promise<{ imagePath: string; usageMetadata?: UsageMetadata }> {
+  const imageModel = channelConfig?.imageGenModel || MODEL_NAME;
   // Configure model for image generation with responseModalities
   const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
+    model: imageModel,
     generationConfig: {
       // @ts-ignore - responseModalities is valid for image generation
       responseModalities: ['TEXT', 'IMAGE'],
@@ -157,7 +161,12 @@ export async function generateSceneImage(
   });
 
   // Get style reference image
-  const styleRefBase64 = getStyleReferenceBase64();
+  const styleRefBase64 = channelConfig
+    ? getStyleReferenceBase64ForChannel(channelConfig.styleReferencePath)
+    : getStyleReferenceBase64();
+
+  const styleInstr = channelConfig?.styleInstruction || NANOBANANA_STYLE_INSTRUCTION;
+  const displayNames = channelConfig?.characterDisplayNames || DEFAULT_CHARACTER_DISPLAY_NAMES;
 
   // Build the content parts - order matters for reference images
   const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
@@ -165,18 +174,18 @@ export async function generateSceneImage(
   // Base style instruction that emphasizes using reference images
   const stylePrefix = `CRITICAL INSTRUCTION: You MUST generate an image that EXACTLY copies the visual style from the reference image.
 
-MOST IMPORTANT - BACKGROUND: The reference image has a CRUMPLED BROWN PAPER TEXTURE background with visible wrinkles and creases. You MUST replicate this EXACT crumpled paper texture. DO NOT use a plain, flat, or smooth background. The paper texture with wrinkles is the defining visual element.
+MOST IMPORTANT - BACKGROUND: The reference image shows the exact background texture to use. You MUST replicate this EXACT background texture. DO NOT use a plain, flat, or smooth background.
 
-${NANOBANANA_STYLE_INSTRUCTION}
+${styleInstr}
 
-CHARACTER REFERENCES: Phrases like "the ordinary person", "the man in the suit", and "the abstract system" are descriptions of WHO is in the scene. They are NOT text that should appear in the image. Do NOT render these as labels, captions, name tags, arrows, or any visible text pointing to characters. Draw the characters visually — show them acting out the scene.
+CHARACTER REFERENCES: Character names in the prompt are descriptions of WHO is in the scene. They are NOT text that should appear in the image. Do NOT render these as labels, captions, name tags, arrows, or any visible text pointing to characters. Draw the characters visually — show them acting out the scene.
 
-REMINDER: The crumpled paper texture background is NON-NEGOTIABLE. Look at the reference image and copy that exact textured background.`;
+REMINDER: The background texture from the reference image is NON-NEGOTIABLE. Look at the reference image and copy that exact textured background.`;
 
   // Get the visual type, defaulting to NEW_SCENE for backward compatibility
   const visualType = scene.visualType || 'NEW_SCENE';
   const characters = scene.characters || [];
-  const sanitizedNanoPrompt = sanitizeCharacterNames(scene.nanoPrompt);
+  const sanitizedNanoPrompt = sanitizeCharacterNames(scene.nanoPrompt, displayNames);
 
   // Build the full prompt based on visual type
   let fullPrompt: string;
@@ -215,7 +224,7 @@ ${generateEditPrompt(sanitizedNanoPrompt)}`;
     } catch (err) {
       console.warn(`[DEBUG nanoBanana] Could not read previous image for edit, falling back to NEW_SCENE:`, err);
       // Fall back to NEW_SCENE behavior
-      const characterRefPrompt = buildCharacterReferencePrompt(characters, 2);
+      const characterRefPrompt = buildCharacterReferencePrompt(characters, 2, displayNames);
       fullPrompt = `${stylePrefix}\n\n${generateNewScenePrompt(sanitizedNanoPrompt, characterRefPrompt)}`;
       parts.push({ text: fullPrompt });
       parts.push({ inlineData: { mimeType: 'image/png', data: styleRefBase64 } });
@@ -251,14 +260,14 @@ ${generateFocusPrompt(sanitizedNanoPrompt)}`;
       console.log(`[DEBUG nanoBanana] Scene ${scene.sceneIndex}: OBJECT_FOCUS - zoom mode with previous scene`);
     } catch (err) {
       console.warn(`[DEBUG nanoBanana] Could not read previous image for focus, falling back to NEW_SCENE:`, err);
-      const characterRefPrompt = buildCharacterReferencePrompt(characters, 2);
+      const characterRefPrompt = buildCharacterReferencePrompt(characters, 2, displayNames);
       fullPrompt = `${stylePrefix}\n\n${generateNewScenePrompt(sanitizedNanoPrompt, characterRefPrompt)}`;
       parts.push({ text: fullPrompt });
       parts.push({ inlineData: { mimeType: 'image/png', data: styleRefBase64 } });
     }
   } else {
     // NEW_SCENE - full generation with character anchors if available
-    const characterRefPrompt = buildCharacterReferencePrompt(characters, 2);
+    const characterRefPrompt = buildCharacterReferencePrompt(characters, 2, displayNames);
     fullPrompt = `${stylePrefix}
 
 ${generateNewScenePrompt(sanitizedNanoPrompt, characterRefPrompt)}`;
@@ -486,21 +495,24 @@ export function buildScenePromptParts(
   scene: Scene,
   styleRefBase64: string,
   referenceImageBase64: string | null,
-  characterAnchorImages: Map<CharacterType, string> // char → base64
+  characterAnchorImages: Map<CharacterType, string>, // char → base64
+  channelConfig?: ChannelConfig
 ): { text: string; images: { mimeType: string; data: string }[] } {
   const visualType = scene.visualType || 'NEW_SCENE';
   const characters = scene.characters || [];
-  const sanitizedNanoPrompt = sanitizeCharacterNames(scene.nanoPrompt);
+  const displayNames = channelConfig?.characterDisplayNames || DEFAULT_CHARACTER_DISPLAY_NAMES;
+  const sanitizedNanoPrompt = sanitizeCharacterNames(scene.nanoPrompt, displayNames);
+  const styleInstr = channelConfig?.styleInstruction || NANOBANANA_STYLE_INSTRUCTION;
 
   const stylePrefix = `CRITICAL INSTRUCTION: You MUST generate an image that EXACTLY copies the visual style from the reference image.
 
-MOST IMPORTANT - BACKGROUND: The reference image has a CRUMPLED BROWN PAPER TEXTURE background with visible wrinkles and creases. You MUST replicate this EXACT crumpled paper texture. DO NOT use a plain, flat, or smooth background. The paper texture with wrinkles is the defining visual element.
+MOST IMPORTANT - BACKGROUND: The reference image shows the exact background texture to use. You MUST replicate this EXACT background texture. DO NOT use a plain, flat, or smooth background.
 
-${NANOBANANA_STYLE_INSTRUCTION}
+${styleInstr}
 
-CHARACTER REFERENCES: Phrases like "the ordinary person", "the man in the suit", and "the abstract system" are descriptions of WHO is in the scene. They are NOT text that should appear in the image. Do NOT render these as labels, captions, name tags, arrows, or any visible text pointing to characters. Draw the characters visually — show them acting out the scene.
+CHARACTER REFERENCES: Character names in the prompt are descriptions of WHO is in the scene. They are NOT text that should appear in the image. Do NOT render these as labels, captions, name tags, arrows, or any visible text pointing to characters. Draw the characters visually — show them acting out the scene.
 
-REMINDER: The crumpled paper texture background is NON-NEGOTIABLE. Look at the reference image and copy that exact textured background.`;
+REMINDER: The background texture from the reference image is NON-NEGOTIABLE. Look at the reference image and copy that exact textured background.`;
 
   const images: { mimeType: string; data: string }[] = [];
   let fullPrompt: string;
@@ -520,7 +532,7 @@ REMINDER: The crumpled paper texture background is NON-NEGOTIABLE. Look at the r
     let refIdx = 2; // style ref is 1
     for (const char of characters) {
       if (characterAnchorImages.has(char)) {
-        const displayName = CHARACTER_DISPLAY_NAMES[char] || char;
+        const displayName = displayNames[char] || char;
         charRefLines.push(`Reference ${refIdx} shows the EXACT character model for ${displayName}. This character MUST look identical to Reference ${refIdx} in this scene.`);
         refIdx++;
       }

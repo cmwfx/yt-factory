@@ -24,7 +24,7 @@ export interface UseIdeasResult {
   deleteIdeas: (ids: string[]) => Promise<number>;
 }
 
-export function useIdeas(filter?: 'all' | 'used' | 'unused'): UseIdeasResult {
+export function useIdeas(filter?: 'all' | 'used' | 'unused', channelId?: string): UseIdeasResult {
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [total, setTotal] = useState(0);
   const [unused, setUnused] = useState(0);
@@ -39,6 +39,7 @@ export function useIdeas(filter?: 'all' | 'used' | 'unused'): UseIdeasResult {
       const params = new URLSearchParams();
       if (filter === 'used') params.set('used', 'true');
       if (filter === 'unused') params.set('used', 'false');
+      if (channelId) params.set('channelId', channelId);
 
       const url = `/api/ideas${params.toString() ? `?${params}` : ''}`;
       const res = await fetch(url);
@@ -56,7 +57,7 @@ export function useIdeas(filter?: 'all' | 'used' | 'unused'): UseIdeasResult {
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, channelId]);
 
   useEffect(() => {
     fetchIdeas();

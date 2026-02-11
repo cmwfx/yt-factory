@@ -11,7 +11,7 @@ import {
 } from '@/lib/db';
 import { getFilePath, fileExists, ensureJobDir, saveJson } from '@/utils/fileStore';
 import { concatenateAudioFiles } from '@/utils/ffmpeg';
-import type { Scene } from '@/types';
+import type { Scene, ChannelConfig } from '@/types';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -19,6 +19,7 @@ export interface AudioWorkerInput {
   videoId: string;
   script: string;  // Not used in new approach (kept for backwards compatibility)
   scenes: Scene[];
+  channelConfig?: ChannelConfig;
 }
 
 export interface AudioWorkerOutput {
@@ -33,7 +34,7 @@ export interface AudioWorkerOutput {
  * Generate audio per scene, then concatenate into a single file.
  */
 export async function runAudioWorker(input: AudioWorkerInput): Promise<AudioWorkerOutput> {
-  const { videoId, scenes } = input;
+  const { videoId, scenes, channelConfig } = input;
 
   // Check if already done
   const existingStep = await getStepByName(videoId, 'audio');
@@ -86,14 +87,16 @@ export async function runAudioWorker(input: AudioWorkerInput): Promise<AudioWork
     const audioPath = getFilePath(videoId, audioFilename);
 
     // Generate audio using scene-based chunking (50 scenes per chunk)
-    const result = await generateSceneBasedAudio(scenes, audioPath, VOICES.ALGENIB);
+    const voice = channelConfig?.ttsVoiceName || VOICES.ALGENIB;
+    const ttsModelOverride = channelConfig?.ttsModel;
+    const result = await generateSceneBasedAudio(scenes, audioPath, voice, ttsModelOverride);
 
     const totalDuration = result.duration;
 
     // Create asset record (no sceneDurations in this approach - alignment uses transcription)
     await createAsset(videoId, 'audio', audioFilename, audioPath, {
       duration: totalDuration,
-      voice: VOICES.ALGENIB,
+      voice,
     });
 
     await completeStep(step.id);

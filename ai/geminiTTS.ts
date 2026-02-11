@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { env } from '@/lib/env';
 import { withRetry } from '@/utils/retry';
 import { createWavBuffer, calculateAudioDuration } from '@/utils/wav';
-import type { Scene } from '@/types';
+import type { Scene, ChannelConfig } from '@/types';
 import fs from 'fs/promises';
 
 const genAI = new GoogleGenerativeAI(env.GOOGLE_GENAI_API_KEY || '');
@@ -43,12 +43,14 @@ export interface UsageMetadata {
 export async function generateSpeech(
   text: string,
   outputPath: string,
-  voice: string = VOICES.ALGENIB
+  voice: string = VOICES.ALGENIB,
+  ttsModelOverride?: string
 ): Promise<{ audioPath: string; duration: number; usageMetadata?: UsageMetadata }> {
+  const ttsModelName = ttsModelOverride || MODEL_NAME;
   // Note: TTS config is passed via generationConfig extension
   // The SDK types don't include TTS-specific options yet
   const model = genAI.getGenerativeModel({
-    model: MODEL_NAME,
+    model: ttsModelName,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     generationConfig: {
       responseModalities: ['AUDIO'],
@@ -139,7 +141,8 @@ export async function generateSpeech(
 export async function generateScriptAudio(
   script: string,
   outputPath: string,
-  voice: string = VOICES.ALGENIB
+  voice: string = VOICES.ALGENIB,
+  ttsModelOverride?: string
 ): Promise<{ audioPath: string; duration: number; usageMetadata?: UsageMetadata }> {
   // Clean the script
   const cleanScript = script
@@ -151,7 +154,7 @@ export async function generateScriptAudio(
   const MAX_CHARS = 5000; // Conservative limit
 
   if (cleanScript.length <= MAX_CHARS) {
-    return generateSpeech(cleanScript, outputPath, voice);
+    return generateSpeech(cleanScript, outputPath, voice, ttsModelOverride);
   }
 
   // Split into chunks at sentence boundaries
@@ -183,7 +186,7 @@ export async function generateScriptAudio(
 
   for (let i = 0; i < chunks.length; i++) {
     const chunkPath = outputPath.replace('.wav', `_chunk${i}.wav`);
-    const result = await generateSpeech(chunks[i], chunkPath, voice);
+    const result = await generateSpeech(chunks[i], chunkPath, voice, ttsModelOverride);
     const chunkBuffer = await fs.readFile(chunkPath);
     audioBuffers.push(chunkBuffer);
     totalDuration += result.duration;
@@ -241,7 +244,8 @@ const SCENES_PER_CHUNK = 50;
 export async function generateSceneBasedAudio(
   scenes: Scene[],
   outputPath: string,
-  voice: string = VOICES.ALGENIB
+  voice: string = VOICES.ALGENIB,
+  ttsModelOverride?: string
 ): Promise<{ audioPath: string; duration: number; usageMetadata?: UsageMetadata }> {
   // Validate input
   if (!scenes || scenes.length === 0) {
@@ -257,7 +261,7 @@ export async function generateSceneBasedAudio(
   if (scenes.length <= SCENES_PER_CHUNK) {
     const combinedText = scenes.map(s => s.text).join(' ');
     console.log(`Single chunk: all ${scenes.length} scenes (${combinedText.length} chars)`);
-    return generateSpeech(combinedText, outputPath, voice);
+    return generateSpeech(combinedText, outputPath, voice, ttsModelOverride);
   }
 
   // Multiple chunks needed - process in groups of 50 scenes
@@ -288,7 +292,7 @@ export async function generateSceneBasedAudio(
 
     // Generate audio for this chunk
     const chunkPath = outputPath.replace('.wav', `_chunk${chunkIndex}.wav`);
-    const result = await generateSpeech(chunkText, chunkPath, voice);
+    const result = await generateSpeech(chunkText, chunkPath, voice, ttsModelOverride);
 
     console.log(`Generated audio: ${chunkPath} (${result.duration.toFixed(2)}s)`);
 
